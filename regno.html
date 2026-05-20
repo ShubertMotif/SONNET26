@@ -266,13 +266,21 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
       <div style="color:var(--dim);padding:14px">caricamento…</div>
     </div>
     <!-- FPS BOX -->
-    <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;padding:6px 14px;background:var(--bg2);display:flex;align-items:center;gap:14px;height:20%;min-height:80px;overflow:hidden">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:64px">
-        <div id="fps-val" style="font-size:28px;font-weight:700;color:var(--green);line-height:1;font-family:'Courier New',monospace">—</div>
-        <div style="font-size:8px;color:var(--dim);letter-spacing:2px;margin-top:2px">FPS</div>
+    <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2);display:flex;align-items:stretch;height:20%;min-height:80px;overflow:hidden">
+      <!-- plasma animato -->
+      <div style="position:relative;flex-shrink:0;width:160px;overflow:hidden">
+        <img id="fps-canvas" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated">
+        <!-- overlay FPS sul plasma -->
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:4px 6px;background:linear-gradient(transparent 40%,rgba(0,0,0,.7) 100%)">
+          <div style="display:flex;align-items:baseline;gap:3px">
+            <span id="fps-val" style="font-size:22px;font-weight:700;color:#fff;font-family:'Courier New',monospace;text-shadow:0 0 8px var(--green)">—</span>
+            <span style="font-size:9px;color:rgba(255,255,255,.6);letter-spacing:1px">FPS</span>
+          </div>
+          <div id="fps-dot" style="font-size:8px;color:rgba(255,255,255,.5);letter-spacing:1px">● GPU</div>
+        </div>
       </div>
-      <div style="width:1px;height:40px;background:var(--border);flex-shrink:0"></div>
-      <div style="display:flex;flex-direction:column;gap:5px;flex:1;font-size:9px">
+      <!-- stats -->
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:6px 10px;font-size:9px;border-left:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between">
           <span style="color:var(--dim)">CUDA ms</span>
           <span id="fps-cuda" style="color:var(--orange);font-weight:600">—</span>
@@ -290,11 +298,10 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
           <span id="fps-mem" style="color:var(--purple)">—</span>
         </div>
       </div>
-      <div style="width:1px;height:40px;background:var(--border);flex-shrink:0"></div>
-      <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
-        <button onclick="fetch('/api/fpsbox/start',{method:'POST'}).then(()=>{})" style="background:var(--bg3);border:1px solid var(--green);color:var(--green);font-size:9px;padding:2px 8px;border-radius:2px;cursor:pointer;font-family:monospace">▶ START</button>
-        <button onclick="fetch('/api/fpsbox/stop',{method:'POST'}).then(()=>{})"  style="background:var(--bg3);border:1px solid var(--red);color:var(--red);font-size:9px;padding:2px 8px;border-radius:2px;cursor:pointer;font-family:monospace">■ STOP</button>
-        <div id="fps-dot" style="font-size:8px;color:var(--dim);letter-spacing:1px">○ off</div>
+      <!-- controlli -->
+      <div style="display:flex;flex-direction:column;justify-content:center;gap:5px;padding:6px 8px;border-left:1px solid var(--border);flex-shrink:0">
+        <button onclick="fetch('/api/fpsbox/start',{method:'POST'})" style="background:var(--bg3);border:1px solid var(--green);color:var(--green);font-size:9px;padding:3px 8px;border-radius:2px;cursor:pointer;font-family:monospace">▶</button>
+        <button onclick="fetch('/api/fpsbox/stop',{method:'POST'})"  style="background:var(--bg3);border:1px solid var(--red);color:var(--red);font-size:9px;padding:3px 8px;border-radius:2px;cursor:pointer;font-family:monospace">■</button>
       </div>
     </div>
 
@@ -809,13 +816,19 @@ function showCodaPopup(tasks){
 let _interval=5000, _timer=null
 
 // ── FPS BOX poll ──
+function _refreshFrame(){
+  const img=document.getElementById('fps-canvas')
+  if(img) img.src='/api/fpsbox/frame?t='+Date.now()
+}
+setInterval(_refreshFrame, 80)   // ~12fps display — abbastanza fluido
+
 async function pollFps(){
   try{
     const d=await fetch('/api/fpsbox').then(r=>r.json())
     const fps=d.fps??0
     const el=document.getElementById('fps-val')
     el.textContent=fps>0?fps:'—'
-    el.style.color=fps>200?'var(--green)':fps>60?'var(--orange)':'var(--red)'
+    el.style.textShadow=fps>1000?'0 0 12px #0f0':fps>200?'0 0 8px orange':'0 0 6px red'
     document.getElementById('fps-cuda').textContent=d.cuda_ms!=null?d.cuda_ms+'ms':'—'
     const u=d.gpu_util??0
     const uel=document.getElementById('fps-util')
@@ -827,11 +840,10 @@ async function pollFps(){
     tel.style.color=t>80?'var(--red)':t>65?'var(--orange)':'var(--muted)'
     document.getElementById('fps-mem').textContent=d.mem_gb!=null?d.mem_gb+'GB':'—'
     const dot=document.getElementById('fps-dot')
-    dot.textContent=d.running?'● run':'○ off'
-    dot.style.color=d.running?'var(--green)':'var(--dim)'
+    dot.textContent=d.running?'● CUDA live':'○ off'
   }catch(_){}
 }
-setInterval(pollFps,2000)
+setInterval(pollFps,1000)
 pollFps()
 
 function renderGpuBox(hw, toks){

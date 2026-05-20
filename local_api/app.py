@@ -27,7 +27,7 @@ def _log_prime():
     global _log_cache
     entries = []
     try:
-        with open(LOG_PATH) as f:
+        with open(LOG_PATH, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -466,6 +466,14 @@ def api_fpsbox():
     data = fps_module.get()
     data["running"] = fps_module.is_running()
     return jsonify(data)
+
+@app.route("/api/fpsbox/frame")
+def fpsbox_frame():
+    frame = fps_module.get_frame()
+    if not frame:
+        return "", 204
+    return app.response_class(frame, mimetype="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 @app.route("/api/fpsbox/start", methods=["POST"])
 def api_fpsbox_start():
