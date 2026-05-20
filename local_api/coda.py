@@ -98,6 +98,20 @@ def add_dual(label, brief, output_claude, file_claude, write_claude=True, autost
     if not file_claude:
         file_claude = _slugify(label or brief[:40]) + "_claude.html"
     path_claude = os.path.join(DIR_CLAUDE, file_claude)
+
+    # Genera placeholder Claude subito quando il task è in pending
+    if worker_claude_init == "pending" and not output_claude:
+        title = label or file_claude.replace("_claude.html", "").replace("_", " ").title()
+        output_claude = _report.make(
+            title,
+            [
+                _report.box(f"<strong>Brief:</strong> {brief[:800]}", "info"),
+                _report.box("DeepSonnet26 in elaborazione — risposta Claude non ancora disponibile.", "note"),
+            ],
+            model="Claude (pending)"
+        )
+        write_claude = True
+
     if write_claude and output_claude:
         os.makedirs(DIR_CLAUDE, exist_ok=True)
         with open(path_claude, "w", encoding="utf-8") as f:
@@ -202,6 +216,46 @@ def _update_standard(task_id, status, output=None, finished=False):
         _save(tasks)
 
 
+def _save_std_html(task, out, status):
+    """Genera e salva un HTML di risultato per task standard."""
+    try:
+        label  = task.get("label") or task.get("payload","task")[:50]
+        typ    = task.get("type","task")
+        ok     = status == "done"
+        slug   = _slugify(f"{label}_{task['id']}")
+        path   = os.path.join(DIR_CLAUDE, slug + "_claude.html")
+        color  = "ok" if ok else "danger"
+        badge  = "✓ completato" if ok else "✗ errore"
+        html   = _report.make(
+            label,
+            [
+                _report.stat_row([
+                    (badge, "stato"),
+                    (typ,   "tipo"),
+                    (task.get("id",""), "id"),
+                ], colors=["var(--green)" if ok else "var(--red)", "var(--accent)", "var(--muted)"]),
+                _report.h2("Payload"),
+                _report.code(task.get("payload", "")),
+                _report.h2("Output"),
+                _report.box(out[:4000], color),
+            ],
+            model="Claude"
+        )
+        os.makedirs(DIR_CLAUDE, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(html)
+        # Aggiorna il task con il percorso del file
+        with _lock:
+            tasks = _load()
+            for t in tasks:
+                if t["id"] == task["id"]:
+                    t["file_claude"] = os.path.basename(path)
+                    t["path_claude"] = path
+            _save(tasks)
+    except Exception:
+        pass
+
+
 def _run_standard(task):
     _update_standard(task["id"], "running")
     try:
@@ -210,16 +264,20 @@ def _run_standard(task):
                 task["payload"], shell=True, capture_output=True,
                 text=True, timeout=60, cwd="/home/mattia"
             )
-            out = (result.stdout + result.stderr).strip() or "(nessun output)"
-            _update_standard(task["id"], "done" if result.returncode == 0 else "error", out, finished=True)
+            out    = (result.stdout + result.stderr).strip() or "(nessun output)"
+            status = "done" if result.returncode == 0 else "error"
+            _update_standard(task["id"], status, out, finished=True)
+            _save_std_html(task, out, status)
 
         elif task["type"] == "python":
             result = subprocess.run(
                 ["python3", "-c", task["payload"]],
                 capture_output=True, text=True, timeout=60, cwd="/home/mattia"
             )
-            out = (result.stdout + result.stderr).strip() or "(nessun output)"
-            _update_standard(task["id"], "done" if result.returncode == 0 else "error", out, finished=True)
+            out    = (result.stdout + result.stderr).strip() or "(nessun output)"
+            status = "done" if result.returncode == 0 else "error"
+            _update_standard(task["id"], status, out, finished=True)
+            _save_std_html(task, out, status)
 
         elif task["type"] == "prompt":
             try:
@@ -229,21 +287,28 @@ def _run_standard(task):
                     timeout=120
                 )
                 resp = r.json()
-                out = resp.get("response", resp.get("reply", resp.get("message", str(resp))))
+                out  = resp.get("response", resp.get("reply", resp.get("message", str(resp))))
                 _update_standard(task["id"], "done", out, finished=True)
+                _save_std_html(task, out, "done")
             except Exception as e:
                 _update_standard(task["id"], "error", str(e), finished=True)
+                _save_std_html(task, str(e), "error")
 
         elif task["type"] == "note":
             _update_standard(task["id"], "done", task["payload"], finished=True)
+            _save_std_html(task, task["payload"], "done")
 
         else:
-            _update_standard(task["id"], "error", f"tipo sconosciuto: {task['type']}", finished=True)
+            out = f"tipo sconosciuto: {task['type']}"
+            _update_standard(task["id"], "error", out, finished=True)
+            _save_std_html(task, out, "error")
 
     except subprocess.TimeoutExpired:
         _update_standard(task["id"], "error", "[timeout 60s]", finished=True)
+        _save_std_html(task, "[timeout 60s]", "error")
     except Exception as e:
         _update_standard(task["id"], "error", str(e), finished=True)
+        _save_std_html(task, str(e), "error")
 
 
 def _update_dual_deep(task_id, worker_status, output_deep=None, done=False):
