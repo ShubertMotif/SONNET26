@@ -202,6 +202,7 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
   <button class="mode-btn" id="mb3" onclick="setMode(3)" title="3 — Viewer">3 VIEWER</button>
   <button class="mode-btn" id="mb4" onclick="setMode(4)" title="4 — Coda">4 CODA</button>
   <button class="mode-btn" onclick="setMode(5)" title="5 — Refresh immediato">5 ↺</button>
+  <button class="mode-btn" id="mb6" onclick="setMode(6)" title="6 — GPU Gears">6 ⚙</button>
   <span id="mode-hint" style="font-size:9px;color:var(--dim);letter-spacing:1px;min-width:160px">↵ invia</span>
   <button class="hdr-btn" id="theme-btn" onclick="toggleTheme()">☀</button>
   <button class="hdr-btn" onclick="refreshAll()">↺</button>
@@ -265,43 +266,15 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
     <div class="log-area" id="log-area" tabindex="-1">
       <div style="color:var(--dim);padding:14px">caricamento…</div>
     </div>
-    <!-- FPS BOX -->
-    <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2);display:flex;align-items:stretch;height:20%;min-height:80px;overflow:hidden">
-      <!-- plasma animato -->
-      <div style="position:relative;flex-shrink:0;width:160px;overflow:hidden">
-        <img id="fps-canvas" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated">
-        <!-- overlay FPS sul plasma -->
-        <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:4px 6px;background:linear-gradient(transparent 40%,rgba(0,0,0,.7) 100%)">
-          <div style="display:flex;align-items:baseline;gap:3px">
-            <span id="fps-val" style="font-size:22px;font-weight:700;color:#fff;font-family:'Courier New',monospace;text-shadow:0 0 8px var(--green)">—</span>
-            <span style="font-size:9px;color:rgba(255,255,255,.6);letter-spacing:1px">FPS</span>
-          </div>
-          <div id="fps-dot" style="font-size:8px;color:rgba(255,255,255,.5);letter-spacing:1px">● GPU</div>
+    <!-- FPS BOX: full-width gear animation -->
+    <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);height:20%;min-height:80px;overflow:hidden;position:relative">
+      <img id="fps-canvas" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:4px 8px;background:linear-gradient(transparent 50%,rgba(0,0,0,.75) 100%);pointer-events:none">
+        <div style="display:flex;align-items:baseline;gap:3px">
+          <span id="fps-val" style="font-size:20px;font-weight:700;color:#fff;font-family:'Courier New',monospace;text-shadow:0 0 8px var(--green)">—</span>
+          <span style="font-size:8px;color:rgba(255,255,255,.5);letter-spacing:1px">FPS</span>
         </div>
-      </div>
-      <!-- stats -->
-      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:6px 10px;font-size:9px;border-left:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between">
-          <span style="color:var(--dim)">CUDA ms</span>
-          <span id="fps-cuda" style="color:var(--orange);font-weight:600">—</span>
-        </div>
-        <div style="display:flex;justify-content:space-between">
-          <span style="color:var(--dim)">GPU util</span>
-          <span id="fps-util" style="color:var(--blue);font-weight:600">—</span>
-        </div>
-        <div style="display:flex;justify-content:space-between">
-          <span style="color:var(--dim)">temp</span>
-          <span id="fps-temp" style="color:var(--muted)">—</span>
-        </div>
-        <div style="display:flex;justify-content:space-between">
-          <span style="color:var(--dim)">VRAM</span>
-          <span id="fps-mem" style="color:var(--purple)">—</span>
-        </div>
-      </div>
-      <!-- controlli -->
-      <div style="display:flex;flex-direction:column;justify-content:center;gap:5px;padding:6px 8px;border-left:1px solid var(--border);flex-shrink:0">
-        <button onclick="fetch('/api/fpsbox/start',{method:'POST'})" style="background:var(--bg3);border:1px solid var(--green);color:var(--green);font-size:9px;padding:3px 8px;border-radius:2px;cursor:pointer;font-family:monospace">▶</button>
-        <button onclick="fetch('/api/fpsbox/stop',{method:'POST'})"  style="background:var(--bg3);border:1px solid var(--red);color:var(--red);font-size:9px;padding:3px 8px;border-radius:2px;cursor:pointer;font-family:monospace">■</button>
+        <div id="fps-dot" style="font-size:7px;color:rgba(255,255,255,.4);letter-spacing:1px">● CUDA</div>
       </div>
     </div>
 
@@ -330,6 +303,29 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
       <div class="viewer-empty-hint">avvia una ricerca per vedere i risultati qui</div>
     </div>
     <iframe id="result-frame" src="about:blank" style="display:none"></iframe>
+
+    <!-- TAB 6: GPU GEAR VIEWER -->
+    <div id="gear-panel" style="flex:1;display:none;flex-direction:column;position:relative;overflow:hidden;background:var(--bg)">
+      <img id="gear-canvas-big" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;display:block">
+      <!-- top bar -->
+      <div style="position:absolute;top:0;left:0;right:0;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(rgba(0,0,0,.65) 80%,transparent);pointer-events:none">
+        <span style="font-size:10px;color:var(--muted);letter-spacing:2px">⚙ GPU GEARS</span>
+        <span style="font-size:9px;color:var(--dim)">ElementwiseKernel · 3 gears · 19T</span>
+      </div>
+      <!-- FPS big center -->
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">
+        <div style="font-size:72px;font-weight:700;color:#fff;font-family:'Courier New',monospace;line-height:1"><span id="gear-fps-big">—</span></div>
+        <div style="font-size:11px;color:rgba(255,255,255,.45);letter-spacing:4px;margin-top:4px">FPS</div>
+        <div id="gear-cuda-ms" style="font-size:10px;color:rgba(255,255,255,.3);letter-spacing:1px;margin-top:6px">—</div>
+      </div>
+      <!-- controls bottom -->
+      <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:12px;align-items:center">
+        <button id="gear-play-btn" onclick="gearPlay()" style="background:rgba(0,0,0,.55);border:1px solid var(--green);color:var(--green);font-size:16px;width:44px;height:36px;border-radius:4px;cursor:pointer;font-family:monospace;transition:opacity .2s">▶</button>
+        <button id="gear-stop-btn" onclick="gearStop()" style="background:rgba(0,0,0,.55);border:1px solid var(--red);color:var(--red);font-size:16px;width:44px;height:36px;border-radius:4px;cursor:pointer;font-family:monospace;transition:opacity .2s">■</button>
+      </div>
+      <!-- hint -->
+      <div style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-size:8px;color:rgba(255,255,255,.2);letter-spacing:1px;white-space:nowrap">↵ toggle · 1-5 altre tab</div>
+    </div>
   </div>
 
 </div>
@@ -565,12 +561,14 @@ function updateFiles(output){
 
 // ── MODE SYSTEM ──
 let _mode = 1
+let _gearRunning = true
 
 const _modeHints = {
   1: '↵ invia',
   2: '↑↓ riga · PgUp/Dn pagina',
   3: '←→ file · PgUp/Dn scroll · ↵ avanti',
   4: '↑↓ seleziona · ↵ avvia standby · Canc cancella · PgUp/Dn pagina',
+  6: '↵ play/pause',
 }
 
 // bottoni non rubano focus al click
@@ -582,6 +580,7 @@ function _panelEl(m){
   if(m===2) return document.getElementById('log-area')
   if(m===4) return document.getElementById('coda-area')
   if(m===3) return document.querySelector('.right-col')
+  if(m===6) return document.getElementById('gear-panel')
   return null
 }
 
@@ -589,17 +588,37 @@ function setMode(m){
   if(m===5){ mode5(); return }
   _mode = m
 
-  for(let n=1;n<=4;n++){
+  ;[1,2,3,4,6].forEach(n=>{
     const b=document.getElementById('mb'+n)
     if(b) b.classList.toggle('active', n===m)
-  }
+  })
 
   document.querySelectorAll('.panel-active').forEach(el=>el.classList.remove('panel-active'))
   const pel=_panelEl(m)
   if(pel) pel.classList.add('panel-active')
 
-
   document.getElementById('mode-hint').textContent = _modeHints[m]||''
+
+  // Show/hide gear panel vs HTML viewer
+  const gearPanel=document.getElementById('gear-panel')
+  const viewerNav=document.querySelector('.viewer-nav')
+  if(m===6){
+    gearPanel.style.display='flex'
+    viewerNav.style.display='none'
+    document.getElementById('viewer-empty').style.display='none'
+    document.getElementById('result-frame').style.display='none'
+  } else {
+    gearPanel.style.display='none'
+    viewerNav.style.display=''
+    // Restore viewer state
+    if(_files.length){
+      document.getElementById('viewer-empty').style.display='none'
+      document.getElementById('result-frame').style.display='block'
+    } else {
+      document.getElementById('viewer-empty').style.display='flex'
+      document.getElementById('result-frame').style.display='none'
+    }
+  }
 
   if(m===1){
     document.getElementById('q-payload').focus()
@@ -683,9 +702,9 @@ function handleKey(e){
   if(e.ctrlKey||e.metaKey||e.altKey) return
   const typing=_isTyping()
 
-  // 1-5: switch modo solo se non si sta scrivendo
+  // 1-6: switch modo solo se non si sta scrivendo
   if(!typing){
-    const n={'1':1,'2':2,'3':3,'4':4,'5':5}[e.key]
+    const n={'1':1,'2':2,'3':3,'4':4,'5':5,'6':6}[e.key]
     if(n!=null){ e.preventDefault(); setMode(n); return }
   }
 
@@ -718,6 +737,12 @@ function handleKey(e){
     if(e.key==='PageDown')  ca.scrollBy(0, ca.clientHeight*0.85)
     if(e.key==='Enter')     _codaStartSel()
     if(e.key==='Delete')    _codaCancelSel()
+    return
+  }
+  if(_mode===6){
+    if(e.key==='Enter'||e.key===' '){
+      if(_gearRunning) gearStop(); else gearPlay()
+    }
     return
   }
 }
@@ -817,34 +842,50 @@ let _interval=5000, _timer=null
 
 // ── FPS BOX poll ──
 function _refreshFrame(){
+  const t=Date.now()
   const img=document.getElementById('fps-canvas')
-  if(img) img.src='/api/fpsbox/frame?t='+Date.now()
+  if(img) img.src='/api/fpsbox/frame?t='+t
+  const big=document.getElementById('gear-canvas-big')
+  if(big) big.src='/api/fpsbox/frame?t='+t
 }
-setInterval(_refreshFrame, 80)   // ~12fps display — abbastanza fluido
+setInterval(_refreshFrame, 80)   // ~12fps display
 
 async function pollFps(){
   try{
     const d=await fetch('/api/fpsbox').then(r=>r.json())
     const fps=d.fps??0
+    _gearRunning=!!d.running
+    // fps-box in left col
     const el=document.getElementById('fps-val')
     el.textContent=fps>0?fps:'—'
     el.style.textShadow=fps>1000?'0 0 12px #0f0':fps>200?'0 0 8px orange':'0 0 6px red'
-    document.getElementById('fps-cuda').textContent=d.cuda_ms!=null?d.cuda_ms+'ms':'—'
-    const u=d.gpu_util??0
-    const uel=document.getElementById('fps-util')
-    uel.textContent=u+'%'
-    uel.style.color=u>90?'var(--red)':u>60?'var(--orange)':'var(--blue)'
-    const t=d.temp_c??0
-    const tel=document.getElementById('fps-temp')
-    tel.textContent=t+'°C'
-    tel.style.color=t>80?'var(--red)':t>65?'var(--orange)':'var(--muted)'
-    document.getElementById('fps-mem').textContent=d.mem_gb!=null?d.mem_gb+'GB':'—'
     const dot=document.getElementById('fps-dot')
-    dot.textContent=d.running?'● CUDA live':'○ off'
+    dot.textContent=d.running?'● CUDA':'○ off'
+    // gear tab
+    const gfps=document.getElementById('gear-fps-big')
+    if(gfps){
+      gfps.textContent=fps>0?fps:'—'
+      gfps.style.textShadow=fps>1000?'0 0 30px var(--green)':fps>200?'0 0 20px var(--orange)':'0 0 15px var(--red)'
+    }
+    const gcuda=document.getElementById('gear-cuda-ms')
+    if(gcuda) gcuda.textContent=d.cuda_ms!=null?d.cuda_ms+' ms CUDA':'—'
+    const play=document.getElementById('gear-play-btn')
+    const stop=document.getElementById('gear-stop-btn')
+    if(play) play.style.opacity=d.running?'0.35':'1'
+    if(stop) stop.style.opacity=d.running?'1':'0.35'
   }catch(_){}
 }
 setInterval(pollFps,1000)
 pollFps()
+
+async function gearPlay(){
+  await fetch('/api/fpsbox/start',{method:'POST'})
+  toast('Gears avviato','info','▶')
+}
+async function gearStop(){
+  await fetch('/api/fpsbox/stop',{method:'POST'})
+  toast('Gears fermato','info','■')
+}
 
 function renderGpuBox(hw, toks){
   const g=hw?.gpu
