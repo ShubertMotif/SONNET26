@@ -6,6 +6,7 @@ import subprocess, os, json, requests, time, datetime
 import coda as coda_module
 import scheduler as sched_module
 import report as report_module
+import fps_monitor as fps_module
 
 app = Flask(__name__)
 CORS(app)
@@ -57,6 +58,7 @@ def _save_state():
 
 _load_state()
 _log_prime()
+fps_module.start()
 
 # ── Filetree cache (TTL 30s) ─────────────────────────────────
 _ftcache = {"ts": 0, "ssd": [], "deep": []}
@@ -457,6 +459,23 @@ def api_report():
     report_module.save(html, path)
     log_append("claude", "report", filename)
     return jsonify({"ok": True, "path": path, "filename": filename})
+
+# ── FPS Box ──────────────────────────────────────────────────
+@app.route("/api/fpsbox")
+def api_fpsbox():
+    data = fps_module.get()
+    data["running"] = fps_module.is_running()
+    return jsonify(data)
+
+@app.route("/api/fpsbox/start", methods=["POST"])
+def api_fpsbox_start():
+    fps_module.start()
+    return jsonify({"ok": True})
+
+@app.route("/api/fpsbox/stop", methods=["POST"])
+def api_fpsbox_stop():
+    fps_module.stop()
+    return jsonify({"ok": True})
 
 # ── Status ───────────────────────────────────────────────────
 @app.route("/api/status")

@@ -205,6 +205,12 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
   <span id="mode-hint" style="font-size:9px;color:var(--dim);letter-spacing:1px;min-width:160px">↵ invia</span>
   <button class="hdr-btn" id="theme-btn" onclick="toggleTheme()">☀</button>
   <button class="hdr-btn" onclick="refreshAll()">↺</button>
+  <span style="font-size:9px;color:var(--dim);white-space:nowrap;display:flex;align-items:center;gap:4px;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px">
+    GPU&nbsp;<span id="gpu-util" style="color:var(--orange);font-weight:700">—</span><span style="color:var(--dim)">%</span>
+    &nbsp;<span id="gpu-vram" style="color:var(--blue)">—</span><span style="color:var(--dim)">GB</span>
+    &nbsp;<span id="gpu-temp" style="color:var(--muted)">—</span><span style="color:var(--dim)">°</span>
+    &nbsp;<span id="gpu-toks" style="color:var(--green);font-weight:700">—</span><span style="color:var(--dim)">t/s</span>
+  </span>
 </header>
 
 <!-- SERVICES -->
@@ -219,17 +225,6 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
   <span class="svc-sep">|</span>
   <span class="svc-item"><span class="svc-name">Ollama</span> <span class="svc-dot unknown" id="dot-ollama">●</span></span>
   <span class="svc-sep">|</span>
-  <span class="svc-sep">|</span>
-  <span class="svc-item" id="gpu-box" style="gap:5px;font-size:10px">
-    <span style="color:var(--dim)">GPU</span>
-    <span id="gpu-util" style="color:var(--orange);font-weight:600">—</span><span style="color:var(--dim)">%</span>
-    <span class="svc-sep">·</span>
-    <span id="gpu-vram" style="color:var(--blue)">—</span><span style="color:var(--dim)">GB</span>
-    <span class="svc-sep">·</span>
-    <span id="gpu-temp" style="color:var(--muted)">—</span><span style="color:var(--dim)">°C</span>
-    <span class="svc-sep">·</span>
-    <span id="gpu-toks" style="color:var(--green);font-weight:600">—</span><span style="color:var(--dim)"> t/s</span>
-  </span>
   <span class="svc-sep">|</span>
   <span style="font-size:10px;color:var(--muted)" id="coda-mini">CODA —</span>
 </div>
@@ -270,6 +265,39 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
     <div class="log-area" id="log-area" tabindex="-1">
       <div style="color:var(--dim);padding:14px">caricamento…</div>
     </div>
+    <!-- FPS BOX -->
+    <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;padding:6px 14px;background:var(--bg2);display:flex;align-items:center;gap:14px;height:20%;min-height:80px;overflow:hidden">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:64px">
+        <div id="fps-val" style="font-size:28px;font-weight:700;color:var(--green);line-height:1;font-family:'Courier New',monospace">—</div>
+        <div style="font-size:8px;color:var(--dim);letter-spacing:2px;margin-top:2px">FPS</div>
+      </div>
+      <div style="width:1px;height:40px;background:var(--border);flex-shrink:0"></div>
+      <div style="display:flex;flex-direction:column;gap:5px;flex:1;font-size:9px">
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">CUDA ms</span>
+          <span id="fps-cuda" style="color:var(--orange);font-weight:600">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">GPU util</span>
+          <span id="fps-util" style="color:var(--blue);font-weight:600">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">temp</span>
+          <span id="fps-temp" style="color:var(--muted)">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--dim)">VRAM</span>
+          <span id="fps-mem" style="color:var(--purple)">—</span>
+        </div>
+      </div>
+      <div style="width:1px;height:40px;background:var(--border);flex-shrink:0"></div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+        <button onclick="fetch('/api/fpsbox/start',{method:'POST'}).then(()=>{})" style="background:var(--bg3);border:1px solid var(--green);color:var(--green);font-size:9px;padding:2px 8px;border-radius:2px;cursor:pointer;font-family:monospace">▶ START</button>
+        <button onclick="fetch('/api/fpsbox/stop',{method:'POST'}).then(()=>{})"  style="background:var(--bg3);border:1px solid var(--red);color:var(--red);font-size:9px;padding:2px 8px;border-radius:2px;cursor:pointer;font-family:monospace">■ STOP</button>
+        <div id="fps-dot" style="font-size:8px;color:var(--dim);letter-spacing:1px">○ off</div>
+      </div>
+    </div>
+
     <div class="coda-area" id="coda-area" tabindex="-1">
       <div class="panel-hdr">
         <span class="panel-title">CODA</span>
@@ -779,6 +807,32 @@ function showCodaPopup(tasks){
 
 // ── DASHBOARD REFRESH ──
 let _interval=5000, _timer=null
+
+// ── FPS BOX poll ──
+async function pollFps(){
+  try{
+    const d=await fetch('/api/fpsbox').then(r=>r.json())
+    const fps=d.fps??0
+    const el=document.getElementById('fps-val')
+    el.textContent=fps>0?fps:'—'
+    el.style.color=fps>200?'var(--green)':fps>60?'var(--orange)':'var(--red)'
+    document.getElementById('fps-cuda').textContent=d.cuda_ms!=null?d.cuda_ms+'ms':'—'
+    const u=d.gpu_util??0
+    const uel=document.getElementById('fps-util')
+    uel.textContent=u+'%'
+    uel.style.color=u>90?'var(--red)':u>60?'var(--orange)':'var(--blue)'
+    const t=d.temp_c??0
+    const tel=document.getElementById('fps-temp')
+    tel.textContent=t+'°C'
+    tel.style.color=t>80?'var(--red)':t>65?'var(--orange)':'var(--muted)'
+    document.getElementById('fps-mem').textContent=d.mem_gb!=null?d.mem_gb+'GB':'—'
+    const dot=document.getElementById('fps-dot')
+    dot.textContent=d.running?'● run':'○ off'
+    dot.style.color=d.running?'var(--green)':'var(--dim)'
+  }catch(_){}
+}
+setInterval(pollFps,2000)
+pollFps()
 
 function renderGpuBox(hw, toks){
   const g=hw?.gpu
