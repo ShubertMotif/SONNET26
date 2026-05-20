@@ -38,6 +38,13 @@ _lock = threading.Lock()
 _worker_thread = None
 
 
+def _slugify(text):
+    import re
+    text = re.sub(r'[^\w\s-]', '', text.lower().strip())
+    text = re.sub(r'[\s_-]+', '_', text)
+    return text[:40].strip('_') or "task"
+
+
 def _load():
     os.makedirs(os.path.dirname(CODA_FILE), exist_ok=True)
     if not os.path.exists(CODA_FILE):
@@ -80,15 +87,17 @@ def add(task_type, payload, label=""):
     return task
 
 
-def add_dual(label, brief, output_claude, file_claude, write_claude=True, autostart=True):
+def add_dual(label, brief, output_claude, file_claude, write_claude=True, autostart=True, worker_claude_init="done"):
     """
     Task dual: Claude ha già completato la sua parte,
     DeepSonnet26 viene accodato per lavorare sullo stesso brief.
     write_claude=False se il file è già stato salvato dal chiamante.
     autostart=False: il task resta in standby finché non viene avviato manualmente.
     """
+    if not file_claude:
+        file_claude = _slugify(label or brief[:40]) + "_claude.html"
     path_claude = os.path.join(DIR_CLAUDE, file_claude)
-    if write_claude:
+    if write_claude and output_claude:
         os.makedirs(DIR_CLAUDE, exist_ok=True)
         with open(path_claude, "w", encoding="utf-8") as f:
             f.write(output_claude)
@@ -110,7 +119,7 @@ def add_dual(label, brief, output_claude, file_claude, write_claude=True, autost
         "started": _now() if autostart else None,
         "finished": None,
         "output": "",
-        "worker_claude": "done",
+        "worker_claude": worker_claude_init,
         "output_claude": output_claude[:2000],
         "file_claude": file_claude,
         "path_claude": path_claude,
@@ -161,7 +170,7 @@ def cancel(task_id):
     with _lock:
         tasks = _load()
         for t in tasks:
-            if t["id"] == task_id and t["status"] in ("pending", "running"):
+            if t["id"] == task_id and t["status"] in ("pending", "running", "standby"):
                 t["status"] = "cancelled"
                 t["finished"] = _now()
                 if t["type"] == "dual":

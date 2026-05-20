@@ -181,10 +181,10 @@ def dashboard():
         "services":  services_data(),
         "log":       read_log(30),
         "coda":      {
-            "tasks":   standard[-20:],
-            "pending": sum(1 for t in standard if t["status"] == "pending"),
-            "running": sum(1 for t in standard if t["status"] == "running"),
-            "total":   len(standard),
+            "tasks":   sorted(tasks, key=lambda t: t.get("created",""))[-40:],
+            "pending": sum(1 for t in tasks if t["status"] == "pending"),
+            "running": sum(1 for t in tasks if t["status"] == "running"),
+            "total":   len(tasks),
         },
         "dual":      dual[-10:],
         "scheduler": sched,
@@ -216,6 +216,21 @@ def task_add():
     label   = data.get("label", payload[:50])
     if not payload:
         return jsonify({"error": "payload mancante"}), 400
+
+    # "prompt" / "AI" → dual task: Deep genera HTML subito, Claude lato pending
+    if type_ == "prompt":
+        task = coda_module.add_dual(
+            label=label,
+            brief=payload,
+            output_claude="",
+            file_claude="",          # auto-generato da _slugify(label)
+            write_claude=False,
+            autostart=True,          # DeepSonnet26 parte immediatamente
+            worker_claude_init="pending",
+        )
+        log_append("claude", "dual_input", f"[AI→dual] {payload[:60]}")
+        log_append("deep",   label,        f"→ auto: {task['file_deep']}")
+        return jsonify({"task": task, "ds_task": None, "ds_on": _ds_on})
 
     task = coda_module.add(type_, payload, label)
     log_append("coda", "task_add", f"[{type_}] {payload[:60]}")

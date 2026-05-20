@@ -347,29 +347,63 @@ function renderCoda(coda){
   document.getElementById('coda-count').textContent=`${total} · ${pending} pend · ${running} run`
   document.getElementById('coda-mini').textContent=`CODA ${total} · ${pending} pend · ${running} run`
 
-  const all=[...tasks].reverse()
-  _codaTasks=all
-  document.getElementById('coda-list').innerHTML=all.length?all.map((t,i)=>{
-    const isStandby = t.status==='standby'
-    const isRunning = t.status==='running'
-    let modelHtml='<span class="coda-model" style="color:var(--dim)">—</span>'
+  // Espandi dual task in DUE righe: prima ⬡C poi ◈D
+  const rows=[]
+  for(const t of [...tasks].reverse()){
     if(t.type==='dual'){
-      const wc=t.worker_claude||'?', wd=t.worker_deep||'pending'
-      const cCol=wc==='done'?'var(--purple)':wc==='running'?'var(--orange)':'var(--dim)'
-      const dCol=wd==='done'?'var(--blue)':wd==='running'?'var(--orange)':wd==='standby'?'var(--yellow)':'var(--dim)'
-      modelHtml=`<span class="coda-model"><span style="color:${cCol}">⬡C</span> <span style="color:${dCol}">◈D</span></span>`
+      rows.push({...t, _row:'claude'})
+      rows.push({...t, _row:'deep'})
+    } else {
+      rows.push({...t, _row:'std'})
     }
+  }
+  _codaTasks=rows
+
+  document.getElementById('coda-list').innerHTML=rows.length?rows.map((t,i)=>{
+    const sel=(_codaSelIdx===i)
+
+    if(t._row==='claude'){
+      const wc=t.worker_claude||'pending'
+      const stCol=wc==='done'?'var(--green)':wc==='running'?'var(--orange)':wc==='error'?'var(--red)':'var(--muted)'
+      const icon=wc==='done'?'✓':wc==='running'?'⚡':wc==='error'?'✗':'○'
+      return `<div class="coda-item${sel?' selected':''}" style="opacity:.7" data-idx="${i}">
+        <span class="coda-id">#${esc(t.id)}</span>
+        <span class="coda-type" style="color:var(--purple);border-color:#2a1a4a">⬡C</span>
+        <span class="coda-label">${esc(t.label||t.payload)}</span>
+        <span class="coda-model" style="color:var(--dim)">claude</span>
+        <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${icon} ${wc}</span>
+      </div>`
+    }
+
+    if(t._row==='deep'){
+      const wd=t.worker_deep||'pending'
+      const isStandby=wd==='standby', isRunning=wd==='running'
+      const stCol=wd==='done'?'var(--green)':wd==='running'?'var(--orange)':wd==='error'?'var(--red)':wd==='standby'?'var(--yellow)':'var(--muted)'
+      const icon=wd==='done'?'✓':wd==='running'?'⚡':wd==='error'?'✗':wd==='standby'?'○':'⏳'
+      const dot=isRunning?'<span class="run-dot"></span>':''
+      const rowCls=`coda-item${sel?' selected':''}${isStandby?' standby-row':''}`
+      return `<div class="${rowCls}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
+        <span class="coda-id">#${esc(t.id)}</span>
+        <span class="coda-type" style="color:var(--blue);border-color:#1a2a4a">◈D</span>
+        <span class="coda-label">${esc(t.label||t.payload)}</span>
+        <span class="coda-model" style="color:var(--dim)">deep</span>
+        <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${dot}${icon} ${wd}</span>
+      </div>`
+    }
+
+    // task standard (shell/python/note/prompt legacy)
+    const isStandby=t.status==='standby', isRunning=t.status==='running'
     const stCol=taskColor[t.status]||'var(--muted)'
     const dot=isRunning?'<span class="run-dot"></span>':''
-    const rowCls=`coda-item${_codaSelIdx===i?' selected':''}${isStandby?' standby-row':''}`
-    return `
-    <div class="${rowCls}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
+    const rowCls=`coda-item${sel?' selected':''}${isStandby?' standby-row':''}`
+    return `<div class="${rowCls}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
       <span class="coda-id">#${esc(t.id)}</span>
       <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc(t.type.toUpperCase())}</span>
       <span class="coda-label">${esc(t.label||t.payload)}</span>
-      ${modelHtml}
+      <span class="coda-model" style="color:var(--dim)">—</span>
       <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${dot}${taskIcon[t.status]||'?'} ${t.status}</span>
-    </div>`}).join(''):'<div style="color:var(--dim);padding:8px 14px;font-size:10px">coda vuota</div>'
+    </div>`
+  }).join(''):'<div style="color:var(--dim);padding:8px 14px;font-size:10px">coda vuota</div>'
 
   tasks.forEach(t=>{
     const k='t|'+t.id+'|'+t.status
@@ -556,10 +590,19 @@ function _codaMoveSel(dir){
 async function _codaStartSel(){
   if(_codaSelIdx<0||_codaSelIdx>=_codaTasks.length) return
   const t=_codaTasks[_codaSelIdx]
-  if(t.status!=='standby'){
-    toast(`${t.label||t.id}: non in standby (${t.status})`,'warn','!')
+  if(t._row==='claude'){
+    toast(`⬡C Claude side — scrivi HTML e accodalo con write_claude=false`,'info','⬡'); return
+  }
+  if(t._row==='deep'){
+    if(t.worker_deep!=='standby'){ toast(`◈D non in standby (${t.worker_deep})`,'warn','!'); return }
+    try{
+      await fetch(`/api/coda/start/${t.id}`,{method:'POST'})
+      toast(`◈D avviato: ${t.label||t.id}`,'info','⚡')
+    }catch(e){ toast('Errore avvio','error','✗') }
     return
   }
+  // task standard
+  if(t.status!=='standby'){ toast(`${t.label||t.id}: non in standby (${t.status})`,'warn','!'); return }
   try{
     await fetch(`/api/coda/start/${t.id}`,{method:'POST'})
     toast(`Avviato: ${t.label||t.id}`,'info','⚡')
@@ -569,9 +612,9 @@ async function _codaStartSel(){
 async function _codaCancelSel(){
   if(_codaSelIdx<0||_codaSelIdx>=_codaTasks.length) return
   const t=_codaTasks[_codaSelIdx]
+  if(t._row==='claude'){ toast(`Seleziona la riga ◈D per cancellare il task`,'warn','!'); return }
   if(t.status==='done'||t.status==='cancelled'||t.status==='error'){
-    toast(`${t.label||t.id}: già terminato (${t.status})`,'warn','!')
-    return
+    toast(`${t.label||t.id}: già terminato`,'warn','!'); return
   }
   try{
     await fetch(`/api/coda/cancel/${t.id}`,{method:'POST'})
