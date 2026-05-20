@@ -81,11 +81,15 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .log-detail{color:#777;font-size:10px;line-height:1.4;word-break:break-word}
 
 /* CODA */
-.coda-area{border-top:1px solid var(--border);flex-shrink:0;max-height:36vh;overflow-y:auto;overflow-x:hidden}
+.coda-area{border-top:1px solid var(--border);flex-shrink:0;max-height:36vh;overflow-y:auto;overflow-x:hidden;transition:max-height .2s}
 .coda-area .panel-hdr{position:sticky;top:0;z-index:1}
+/* modo 4: coda espansa, log compresso */
+.left-col.coda-expanded .log-area{flex:0;max-height:0;overflow:hidden}
+.left-col.coda-expanded .coda-area{flex:1;max-height:none}
 .log-area:focus,.coda-area:focus{outline:none}
 .panel-active{outline:2px solid var(--purple2)!important;outline-offset:-2px}
-.coda-item{display:grid;grid-template-columns:52px 44px 1fr 72px;gap:5px;padding:5px 14px;border-bottom:1px solid var(--border2);align-items:center;cursor:default}
+.coda-item{display:grid;grid-template-columns:52px 40px 1fr 64px 68px;gap:5px;padding:5px 14px;border-bottom:1px solid var(--border2);align-items:center;cursor:default}
+.coda-model{font-size:8px;text-align:center;font-weight:600;white-space:nowrap}
 .coda-item:last-child{border-bottom:none}
 .coda-item.selected{background:rgba(121,192,255,.1);outline:1px solid var(--blue)}
 .coda-id{color:var(--dim);font-size:9px}
@@ -341,15 +345,24 @@ function renderCoda(coda){
   document.getElementById('coda-count').textContent=`${total} · ${pending} pend · ${running} run`
   document.getElementById('coda-mini').textContent=`CODA ${total} · ${pending} pend · ${running} run`
 
-  const recent=[...tasks].reverse().slice(0,8)
-  _codaTasks=recent
-  document.getElementById('coda-list').innerHTML=recent.length?recent.map((t,i)=>`
+  const all=[...tasks].reverse()
+  _codaTasks=all
+  document.getElementById('coda-list').innerHTML=all.length?all.map((t,i)=>{
+    let modelHtml='<span class="coda-model" style="color:var(--dim)">—</span>'
+    if(t.type==='dual'){
+      const wc=t.worker_claude||'?', wd=t.worker_deep||'pending'
+      const cCol=wc==='done'?'var(--purple)':wc==='running'?'var(--orange)':'var(--dim)'
+      const dCol=wd==='done'?'var(--blue)':wd==='running'?'var(--orange)':'var(--dim)'
+      modelHtml=`<span class="coda-model"><span style="color:${cCol}">⬡C</span> <span style="color:${dCol}">◈D</span></span>`
+    }
+    return `
     <div class="coda-item${_codaSelIdx===i?' selected':''}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
       <span class="coda-id">#${esc(t.id)}</span>
       <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc(t.type.toUpperCase())}</span>
       <span class="coda-label">${esc(t.label||t.payload)}</span>
+      ${modelHtml}
       <span class="coda-status s-${t.status}">${taskIcon[t.status]||'?'} ${t.status}</span>
-    </div>`).join(''):'<div style="color:var(--dim);padding:8px 14px;font-size:10px">coda vuota</div>'
+    </div>`}).join(''):'<div style="color:var(--dim);padding:8px 14px;font-size:10px">coda vuota</div>'
 
   tasks.forEach(t=>{
     const k='t|'+t.id+'|'+t.status
@@ -497,6 +510,10 @@ function setMode(m){
   const pel=_panelEl(m)
   if(pel) pel.classList.add('panel-active')
 
+  // espandi coda solo in modo 4
+  const lc=document.querySelector('.left-col')
+  if(lc) lc.classList.toggle('coda-expanded', m===4)
+
   document.getElementById('mode-hint').textContent = _modeHints[m]||''
 
   if(m===1){
@@ -506,7 +523,6 @@ function setMode(m){
     if(m===2) document.getElementById('log-area').focus()
     else if(m===4){
       const ca=document.getElementById('coda-area')
-      ca.scrollIntoView({behavior:'smooth'})
       ca.focus()
       if(_codaSelIdx<0&&_codaTasks.length) _codaSelIdx=0
       _codaMoveSel(0)
