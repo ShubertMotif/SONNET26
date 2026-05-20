@@ -268,7 +268,7 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
     </div>
     <!-- FPS BOX: full-width gear animation -->
     <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);height:20%;min-height:80px;overflow:hidden;position:relative">
-      <img id="fps-canvas" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated">
+      <img id="fps-canvas" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:contain;display:block;image-rendering:pixelated">
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:4px 8px;background:linear-gradient(transparent 50%,rgba(0,0,0,.75) 100%);pointer-events:none">
         <div style="display:flex;align-items:baseline;gap:3px">
           <span id="fps-val" style="font-size:20px;font-weight:700;color:#fff;font-family:'Courier New',monospace;text-shadow:0 0 8px var(--green)">—</span>

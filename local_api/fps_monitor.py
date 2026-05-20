@@ -21,7 +21,7 @@ from PIL import Image
 import pynvml
 
 # ── Dimensione superficie ──────────────────────────────────────────────────────
-W, H = 80, 55          # 4400 pixel → JPEG veloce, target 6000 FPS
+W, H = 100, 72         # 7200 pixel — Gear C (cx=82+R11) ora visibile intera
 
 # ── Griglia coordinate flat (preparata una sola volta su GPU) ─────────────────
 _xi = cp.tile(cp.arange(W, dtype=cp.float32), H)      # (H*W,)
