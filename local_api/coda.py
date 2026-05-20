@@ -281,7 +281,6 @@ def _update_dual_deep(task_id, worker_status, output_deep=None, done=False):
 def _run_dual_deep(task):
     _update_dual_deep(task["id"], "running")
     try:
-        # Stream direttamente da Ollama per aggiornamenti real-time
         r = requests.post(
             "http://localhost:11434/api/chat",
             json={
@@ -298,6 +297,8 @@ def _run_dual_deep(task):
 
         accumulated = ""
         last_flush = 0
+        tok_count = 0
+        t_start = time.time()
         os.makedirs(DIR_DEEP, exist_ok=True)
 
         for line in r.iter_lines():
@@ -306,8 +307,9 @@ def _run_dual_deep(task):
             try:
                 chunk = json.loads(line)
                 token = chunk.get("message", {}).get("content", "")
-                accumulated += token
-                # Aggiorna CODA ogni ~50 chars per non martellare il lock
+                if token:
+                    accumulated += token
+                    tok_count += 1
                 if len(accumulated) - last_flush >= 300:
                     _update_dual_deep(task["id"], "running", accumulated[:2000])
                     last_flush = len(accumulated)
@@ -316,7 +318,9 @@ def _run_dual_deep(task):
             except Exception:
                 continue
 
-        # Pulizia output e salvataggio
+        elapsed = time.time() - t_start
+        toks_s = round(tok_count / elapsed, 1) if elapsed > 0 else 0
+
         cleaned = _report.fix_output(
             accumulated,
             fallback_title=task.get("label", "Report"),
@@ -324,6 +328,14 @@ def _run_dual_deep(task):
         )
         with open(task["path_deep"], "w", encoding="utf-8") as f:
             f.write(cleaned)
+
+        # Salva tok/s nel task
+        with _lock:
+            tasks = _load()
+            for t in tasks:
+                if t["id"] == task["id"]:
+                    t["toks_s"] = toks_s
+            _save(tasks)
 
         _update_dual_deep(task["id"], "done", accumulated[:2000], done=True)
     except Exception as e:

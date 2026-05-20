@@ -219,6 +219,18 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
   <span class="svc-sep">|</span>
   <span class="svc-item"><span class="svc-name">Ollama</span> <span class="svc-dot unknown" id="dot-ollama">●</span></span>
   <span class="svc-sep">|</span>
+  <span class="svc-sep">|</span>
+  <span class="svc-item" id="gpu-box" style="gap:5px;font-size:10px">
+    <span style="color:var(--dim)">GPU</span>
+    <span id="gpu-util" style="color:var(--orange);font-weight:600">—</span><span style="color:var(--dim)">%</span>
+    <span class="svc-sep">·</span>
+    <span id="gpu-vram" style="color:var(--blue)">—</span><span style="color:var(--dim)">GB</span>
+    <span class="svc-sep">·</span>
+    <span id="gpu-temp" style="color:var(--muted)">—</span><span style="color:var(--dim)">°C</span>
+    <span class="svc-sep">·</span>
+    <span id="gpu-toks" style="color:var(--green);font-weight:600">—</span><span style="color:var(--dim)"> t/s</span>
+  </span>
+  <span class="svc-sep">|</span>
   <span style="font-size:10px;color:var(--muted)" id="coda-mini">CODA —</span>
 </div>
 
@@ -700,6 +712,7 @@ async function mode5(){
     renderLog(data.log)
     renderDual(data.dual)
     updateFiles(data.output)
+    renderGpuBox(data.hw, data.gpu_fps)
     // aggiorna badge/interval
     const anyRunning=data.coda.running>0||data.dual.some(t=>t.status==='running')||data.scheduler.running
     const badge=document.getElementById('live-badge')
@@ -767,6 +780,26 @@ function showCodaPopup(tasks){
 // ── DASHBOARD REFRESH ──
 let _interval=5000, _timer=null
 
+function renderGpuBox(hw, toks){
+  const g=hw?.gpu
+  const util=document.getElementById('gpu-util')
+  const vram=document.getElementById('gpu-vram')
+  const temp=document.getElementById('gpu-temp')
+  const toksEl=document.getElementById('gpu-toks')
+  if(g&&!g.error){
+    const u=g.gpu_util_pct??'—'
+    util.textContent=u
+    util.style.color=u>90?'var(--red)':u>70?'var(--orange)':'var(--green)'
+    const vUsed=g.mem_used_mib!=null?+(g.mem_used_mib/1024).toFixed(1):'—'
+    const vTot=g.mem_total_mib!=null?+(g.mem_total_mib/1024).toFixed(0):'—'
+    vram.textContent=`${vUsed}/${vTot}`
+    const t=g.temp_c??'—'
+    temp.textContent=t
+    temp.style.color=t>80?'var(--red)':t>65?'var(--orange)':'var(--muted)'
+  }
+  if(toks!=null) toksEl.textContent=toks
+}
+
 async function refreshAll(){
   try{
     const data=await fetch('/api/dashboard').then(r=>r.json())
@@ -777,6 +810,7 @@ async function refreshAll(){
     renderLog(data.log)
     renderDual(data.dual)
     updateFiles(data.output)
+    renderGpuBox(data.hw, data.gpu_fps)
 
     const anyRunning=data.coda.running>0||data.dual.some(t=>t.status==='running')||data.scheduler.running
     const badge=document.getElementById('live-badge')

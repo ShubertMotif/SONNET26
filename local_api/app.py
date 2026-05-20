@@ -95,6 +95,27 @@ def hw_data():
     try:
         r = requests.get("http://localhost:5050/api/stats", timeout=3)
         return r.json()
+    except Exception:
+        pass
+    # Fallback: GPU diretto via nvidia-smi
+    try:
+        out = subprocess.run(
+            ["nvidia-smi",
+             "--query-gpu=utilization.gpu,utilization.memory,memory.used,memory.total,"
+             "temperature.gpu,power.draw,clocks.current.graphics",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip()
+        p = [x.strip() for x in out.split(",")]
+        return {"gpu": {
+            "gpu_util_pct":  int(p[0]),
+            "mem_util_pct":  int(p[1]),
+            "mem_used_mib":  int(p[2]),
+            "mem_total_mib": int(p[3]),
+            "temp_c":        int(p[4]),
+            "power_draw_w":  float(p[5]),
+            "clock_gpu_mhz": int(p[6]),
+        }}
     except Exception as e:
         return {"error": str(e)}
 
@@ -190,6 +211,7 @@ def dashboard():
         "dual":      dual[-10:],
         "scheduler": sched,
         "ds":        {"on": _ds_on},
+        "gpu_fps":   next((t["toks_s"] for t in reversed(dual) if t.get("toks_s")), None),
         "output":    output_files(),
         "filetree":  _get_filetree(),
     })
