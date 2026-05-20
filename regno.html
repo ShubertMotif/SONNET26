@@ -61,7 +61,7 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .panel-hdr{padding:5px 14px;border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--bg2)}
 .panel-title{color:var(--muted);font-size:9px;letter-spacing:2px;text-transform:uppercase}
 .panel-meta{color:var(--dim);font-size:9px}
-.log-area{overflow-y:auto;flex:1}
+.log-area{overflow-y:auto;flex:1;min-height:0}
 .log-entry{display:grid;grid-template-columns:98px 50px 88px 1fr;gap:5px;padding:4px 14px;border-bottom:1px solid var(--border2);align-items:start}
 .log-entry:hover{background:var(--bg2)}
 .log-ts{color:#2a2a4a;font-size:9px;font-variant-numeric:tabular-nums}
@@ -81,17 +81,18 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .log-detail{color:#777;font-size:10px;line-height:1.4;word-break:break-word}
 
 /* CODA */
-.coda-area{border-top:1px solid var(--border);flex-shrink:0;max-height:36vh;overflow-y:auto;overflow-x:hidden;transition:max-height .2s}
+.coda-area{border-top:1px solid var(--border);flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
 .coda-area .panel-hdr{position:sticky;top:0;z-index:1}
-/* modo 4: coda espansa, log compresso */
-.left-col.coda-expanded .log-area{flex:0;max-height:0;overflow:hidden}
-.left-col.coda-expanded .coda-area{flex:1;max-height:none}
 .log-area:focus,.coda-area:focus{outline:none}
 .panel-active{outline:2px solid var(--purple2)!important;outline-offset:-2px}
-.coda-item{display:grid;grid-template-columns:52px 40px 1fr 64px 68px;gap:5px;padding:5px 14px;border-bottom:1px solid var(--border2);align-items:center;cursor:default}
+.coda-item{display:grid;grid-template-columns:52px 40px 1fr 64px 72px;gap:5px;padding:6px 14px;border-bottom:1px solid var(--border2);align-items:center;cursor:default}
 .coda-model{font-size:8px;text-align:center;font-weight:600;white-space:nowrap}
 .coda-item:last-child{border-bottom:none}
 .coda-item.selected{background:rgba(121,192,255,.1);outline:1px solid var(--blue)}
+.coda-item.standby-row{opacity:.5}
+.coda-item.standby-row.selected{opacity:1;background:rgba(227,179,65,.07);outline:1px solid var(--yellow)}
+@keyframes runpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.65)}}
+.run-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--orange);animation:runpulse .9s ease-in-out infinite;vertical-align:middle;margin-right:2px}
 .coda-id{color:var(--dim);font-size:9px}
 .coda-type{font-size:8px;padding:1px 5px;border-radius:2px;border:1px solid;text-align:center}
 .coda-label{font-size:10px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -336,7 +337,8 @@ function renderServices(svcs){
 
 // ── CODA ──
 const _seen=new Set()
-const taskIcon={pending:'⏳',running:'⚡',done:'✓',error:'✗',cancelled:'—'}
+const taskIcon={pending:'⏳',running:'⚡',done:'✓',error:'✗',cancelled:'—',standby:'○'}
+const taskColor={pending:'var(--muted)',running:'var(--orange)',done:'var(--green)',error:'var(--red)',cancelled:'var(--dim)',standby:'var(--yellow)'}
 const typeColor={shell:'#4caf50',python:'#7eb8f7',prompt:'#a78bfa',note:'#ff9800',dual:'#f06292'}
 let _codaTasks=[], _codaSelIdx=-1
 
@@ -348,20 +350,25 @@ function renderCoda(coda){
   const all=[...tasks].reverse()
   _codaTasks=all
   document.getElementById('coda-list').innerHTML=all.length?all.map((t,i)=>{
+    const isStandby = t.status==='standby'
+    const isRunning = t.status==='running'
     let modelHtml='<span class="coda-model" style="color:var(--dim)">—</span>'
     if(t.type==='dual'){
       const wc=t.worker_claude||'?', wd=t.worker_deep||'pending'
       const cCol=wc==='done'?'var(--purple)':wc==='running'?'var(--orange)':'var(--dim)'
-      const dCol=wd==='done'?'var(--blue)':wd==='running'?'var(--orange)':'var(--dim)'
+      const dCol=wd==='done'?'var(--blue)':wd==='running'?'var(--orange)':wd==='standby'?'var(--yellow)':'var(--dim)'
       modelHtml=`<span class="coda-model"><span style="color:${cCol}">⬡C</span> <span style="color:${dCol}">◈D</span></span>`
     }
+    const stCol=taskColor[t.status]||'var(--muted)'
+    const dot=isRunning?'<span class="run-dot"></span>':''
+    const rowCls=`coda-item${_codaSelIdx===i?' selected':''}${isStandby?' standby-row':''}`
     return `
-    <div class="coda-item${_codaSelIdx===i?' selected':''}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
+    <div class="${rowCls}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
       <span class="coda-id">#${esc(t.id)}</span>
       <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc(t.type.toUpperCase())}</span>
       <span class="coda-label">${esc(t.label||t.payload)}</span>
       ${modelHtml}
-      <span class="coda-status s-${t.status}">${taskIcon[t.status]||'?'} ${t.status}</span>
+      <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${dot}${taskIcon[t.status]||'?'} ${t.status}</span>
     </div>`}).join(''):'<div style="color:var(--dim);padding:8px 14px;font-size:10px">coda vuota</div>'
 
   tasks.forEach(t=>{
@@ -482,7 +489,7 @@ const _modeHints = {
   1: '↵ invia',
   2: '↑↓ riga · PgUp/Dn pagina',
   3: '←→ file · PgUp/Dn scroll · ↵ avanti',
-  4: '↑↓ seleziona task · Canc cancella · PgUp/Dn pagina',
+  4: '↑↓ seleziona · ↵ avvia standby · Canc cancella · PgUp/Dn pagina',
 }
 
 // bottoni non rubano focus al click
@@ -510,9 +517,6 @@ function setMode(m){
   const pel=_panelEl(m)
   if(pel) pel.classList.add('panel-active')
 
-  // espandi coda solo in modo 4
-  const lc=document.querySelector('.left-col')
-  if(lc) lc.classList.toggle('coda-expanded', m===4)
 
   document.getElementById('mode-hint').textContent = _modeHints[m]||''
 
@@ -547,6 +551,19 @@ function _codaMoveSel(dir){
     el.classList.toggle('selected',i===_codaSelIdx)
     if(i===_codaSelIdx) el.scrollIntoView({block:'nearest'})
   })
+}
+
+async function _codaStartSel(){
+  if(_codaSelIdx<0||_codaSelIdx>=_codaTasks.length) return
+  const t=_codaTasks[_codaSelIdx]
+  if(t.status!=='standby'){
+    toast(`${t.label||t.id}: non in standby (${t.status})`,'warn','!')
+    return
+  }
+  try{
+    await fetch(`/api/coda/start/${t.id}`,{method:'POST'})
+    toast(`Avviato: ${t.label||t.id}`,'info','⚡')
+  }catch(e){ toast('Errore avvio','error','✗') }
 }
 
 async function _codaCancelSel(){
@@ -609,6 +626,7 @@ function handleKey(e){
     if(e.key==='ArrowDown') _codaMoveSel(1)
     if(e.key==='PageUp')    ca.scrollBy(0,-ca.clientHeight*0.85)
     if(e.key==='PageDown')  ca.scrollBy(0, ca.clientHeight*0.85)
+    if(e.key==='Enter')     _codaStartSel()
     if(e.key==='Delete')    _codaCancelSel()
     return
   }

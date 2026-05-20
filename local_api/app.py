@@ -247,9 +247,11 @@ def coda_add_dual():
         return jsonify({"error": "brief e file_claude obbligatori"}), 400
     label = data.get("label","")[:50]
     write_claude = data.get("write_claude", True)
-    task = coda_module.add_dual(label, brief, data.get("output_claude",""), fc, write_claude=write_claude)
+    autostart    = data.get("autostart", False)   # default standby per code manuali
+    task = coda_module.add_dual(label, brief, data.get("output_claude",""), fc,
+                                write_claude=write_claude, autostart=autostart)
     log_append("claude", label or fc, f"✓ {task['file_claude']}")
-    log_append("deep",   label or fc, f"→ coda: {task['file_deep']}")
+    log_append("deep",   label or fc, f"→ coda: {task['file_deep']} ({'auto' if autostart else 'standby'})")
     return jsonify(task)
 
 @app.route("/api/coda/list")
@@ -264,6 +266,11 @@ def coda_get(task_id):
 @app.route("/api/coda/cancel/<task_id>", methods=["POST"])
 def coda_cancel(task_id):
     coda_module.cancel(task_id)
+    return jsonify({"ok": True})
+
+@app.route("/api/coda/start/<task_id>", methods=["POST"])
+def coda_start(task_id):
+    coda_module.start_task(task_id)
     return jsonify({"ok": True})
 
 @app.route("/api/coda/clear", methods=["POST"])

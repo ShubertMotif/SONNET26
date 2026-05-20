@@ -80,11 +80,12 @@ def add(task_type, payload, label=""):
     return task
 
 
-def add_dual(label, brief, output_claude, file_claude, write_claude=True):
+def add_dual(label, brief, output_claude, file_claude, write_claude=True, autostart=True):
     """
     Task dual: Claude ha già completato la sua parte,
     DeepSonnet26 viene accodato per lavorare sullo stesso brief.
     write_claude=False se il file è già stato salvato dal chiamante.
+    autostart=False: il task resta in standby finché non viene avviato manualmente.
     """
     path_claude = os.path.join(DIR_CLAUDE, file_claude)
     if write_claude:
@@ -94,28 +95,26 @@ def add_dual(label, brief, output_claude, file_claude, write_claude=True):
 
     base = os.path.splitext(file_claude)[0]
     ext  = os.path.splitext(file_claude)[1] or ".txt"
-    # strip _claude suffix se presente, poi aggiungi _deepsonnet26
     base_clean = base[:-7] if base.endswith("_claude") else base
     file_deep = base_clean + "_deepsonnet26" + ext
     path_deep = os.path.join(DIR_DEEP, file_deep)
 
+    deep_worker = "pending" if autostart else "standby"
     task = {
         "id": str(uuid.uuid4())[:8],
         "type": "dual",
         "payload": brief,
         "label": label or brief[:60],
-        "status": "running",
+        "status": "running" if autostart else "standby",
         "created": _now(),
-        "started": _now(),
+        "started": _now() if autostart else None,
         "finished": None,
         "output": "",
-        # Claude (già fatto)
         "worker_claude": "done",
         "output_claude": output_claude[:2000],
         "file_claude": file_claude,
         "path_claude": path_claude,
-        # DeepSonnet26 (in attesa)
-        "worker_deep": "pending",
+        "worker_deep": deep_worker,
         "output_deep": "",
         "file_deep": file_deep,
         "path_deep": path_deep,
@@ -126,8 +125,22 @@ def add_dual(label, brief, output_claude, file_claude, write_claude=True):
         tasks = _load()
         tasks.append(task)
         _save(tasks)
-    _ensure_worker()
+    if autostart:
+        _ensure_worker()
     return task
+
+
+def start_task(task_id):
+    """Avvia un task in standby: worker_deep standby → pending."""
+    with _lock:
+        tasks = _load()
+        for t in tasks:
+            if t["id"] == task_id and t.get("worker_deep") == "standby":
+                t["worker_deep"] = "pending"
+                t["status"] = "running"
+                t["started"] = _now()
+        _save(tasks)
+    _ensure_worker()
 
 
 def list_tasks(status_filter=None):
