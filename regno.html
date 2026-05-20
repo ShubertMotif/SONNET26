@@ -85,8 +85,9 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .coda-area .panel-hdr{position:sticky;top:0;z-index:1}
 .log-area:focus,.coda-area:focus{outline:none}
 .panel-active{outline:2px solid var(--purple2)!important;outline-offset:-2px}
-.coda-item{display:grid;grid-template-columns:52px 44px 1fr 72px;gap:5px;padding:5px 14px;border-bottom:1px solid var(--border2);align-items:center}
+.coda-item{display:grid;grid-template-columns:52px 44px 1fr 72px;gap:5px;padding:5px 14px;border-bottom:1px solid var(--border2);align-items:center;cursor:default}
 .coda-item:last-child{border-bottom:none}
+.coda-item.selected{background:rgba(121,192,255,.1);outline:1px solid var(--blue)}
 .coda-id{color:var(--dim);font-size:9px}
 .coda-type{font-size:8px;padding:1px 5px;border-radius:2px;border:1px solid;text-align:center}
 .coda-label{font-size:10px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -333,6 +334,7 @@ function renderServices(svcs){
 const _seen=new Set()
 const taskIcon={pending:'⏳',running:'⚡',done:'✓',error:'✗',cancelled:'—'}
 const typeColor={shell:'#4caf50',python:'#7eb8f7',prompt:'#a78bfa',note:'#ff9800',dual:'#f06292'}
+let _codaTasks=[], _codaSelIdx=-1
 
 function renderCoda(coda){
   const {tasks,pending,running,total}=coda
@@ -340,8 +342,9 @@ function renderCoda(coda){
   document.getElementById('coda-mini').textContent=`CODA ${total} · ${pending} pend · ${running} run`
 
   const recent=[...tasks].reverse().slice(0,8)
-  document.getElementById('coda-list').innerHTML=recent.length?recent.map(t=>`
-    <div class="coda-item">
+  _codaTasks=recent
+  document.getElementById('coda-list').innerHTML=recent.length?recent.map((t,i)=>`
+    <div class="coda-item${_codaSelIdx===i?' selected':''}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
       <span class="coda-id">#${esc(t.id)}</span>
       <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc(t.type.toUpperCase())}</span>
       <span class="coda-label">${esc(t.label||t.payload)}</span>
@@ -466,7 +469,7 @@ const _modeHints = {
   1: '↵ invia',
   2: '↑↓ riga · PgUp/Dn pagina',
   3: '←→ file · PgUp/Dn scroll · ↵ avanti',
-  4: '↑↓ coda · PgUp/Dn pagina',
+  4: '↑↓ seleziona task · Canc cancella · PgUp/Dn pagina',
 }
 
 // bottoni non rubano focus al click
@@ -505,6 +508,8 @@ function setMode(m){
       const ca=document.getElementById('coda-area')
       ca.scrollIntoView({behavior:'smooth'})
       ca.focus()
+      if(_codaSelIdx<0&&_codaTasks.length) _codaSelIdx=0
+      _codaMoveSel(0)
     }
   }
 }
@@ -518,8 +523,31 @@ function scrollViewerPx(px){
   try{ fr.contentWindow.scrollBy({top:px,behavior:'smooth'}) }catch(_){}
 }
 
+// ── CODA SELECTION ──
+function _codaMoveSel(dir){
+  if(!_codaTasks.length) return
+  _codaSelIdx=Math.max(0,Math.min(_codaTasks.length-1,_codaSelIdx+dir))
+  document.querySelectorAll('#coda-list .coda-item').forEach((el,i)=>{
+    el.classList.toggle('selected',i===_codaSelIdx)
+    if(i===_codaSelIdx) el.scrollIntoView({block:'nearest'})
+  })
+}
+
+async function _codaCancelSel(){
+  if(_codaSelIdx<0||_codaSelIdx>=_codaTasks.length) return
+  const t=_codaTasks[_codaSelIdx]
+  if(t.status==='done'||t.status==='cancelled'||t.status==='error'){
+    toast(`${t.label||t.id}: già terminato (${t.status})`,'warn','!')
+    return
+  }
+  try{
+    await fetch(`/api/coda/cancel/${t.id}`,{method:'POST'})
+    toast(`Cancellato: ${t.label||t.id}`,'warn','✗')
+  }catch(e){ toast('Errore cancel','error','✗') }
+}
+
 // ── KEYBOARD ──
-const _NAV_KEYS=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown','Enter']
+const _NAV_KEYS=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown','Enter','Delete']
 
 function _isTyping(){
   const ae=document.activeElement
@@ -561,10 +589,11 @@ function handleKey(e){
   }
   if(_mode===4){
     const ca=document.getElementById('coda-area')
-    if(e.key==='ArrowUp')   ca.scrollBy(0,-40)
-    if(e.key==='ArrowDown') ca.scrollBy(0,40)
+    if(e.key==='ArrowUp')   _codaMoveSel(-1)
+    if(e.key==='ArrowDown') _codaMoveSel(1)
     if(e.key==='PageUp')    ca.scrollBy(0,-ca.clientHeight*0.85)
     if(e.key==='PageDown')  ca.scrollBy(0, ca.clientHeight*0.85)
+    if(e.key==='Delete')    _codaCancelSel()
     return
   }
 }
