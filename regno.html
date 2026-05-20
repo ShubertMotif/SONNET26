@@ -608,6 +608,13 @@ async function mode5(){
   }catch(e){toast('Errore refresh','error','✗')}
 }
 
+function _codaFileTarget(t){
+  // restituisce {name, src} del file HTML prodotto dal task, se disponibile
+  if(t.type==='dual' && t.worker_deep==='done' && t.file_deep) return {name:t.file_deep, src:'deep'}
+  if(t.type==='dual' && t.file_claude) return {name:t.file_claude, src:'claude'}
+  return null
+}
+
 function showCodaPopup(tasks){
   document.getElementById('quick-popup')?.remove()
   const recent=[...tasks].reverse().slice(0,3)
@@ -618,16 +625,34 @@ function showCodaPopup(tasks){
   popup.id='quick-popup'
   popup.innerHTML=`
     <div style="font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:8px;display:flex;justify-content:space-between">
-      <span>↺ ULTIME CODA</span><span style="color:var(--dim)">click chiude</span>
+      <span>↺ ULTIME CODA</span><span style="color:var(--dim)">click apre file</span>
     </div>
-    ${recent.map(t=>`
-      <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border2)">
+    ${recent.map((t,i)=>{
+      const ft=_codaFileTarget(t)
+      const clickable=ft!==null
+      return `
+      <div data-popup-idx="${i}" style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border2);${clickable?'cursor:pointer':''}${clickable?' border-radius:4px;':''}" ${clickable?`title="Apri ${ft.name} nel viewer"`:''}">
         <span style="color:${colors[t.status]||'var(--muted)'};font-size:12px;min-width:14px">${icons[t.status]||'?'}</span>
         <span style="font-size:9px;color:var(--muted);min-width:38px;text-transform:uppercase">${esc(t.type)}</span>
         <span style="font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.label||t.id)}</span>
-        <span style="font-size:9px;font-weight:600;color:${colors[t.status]||'var(--muted)'}">${t.status}</span>
-      </div>`).join('')}
+        <span style="font-size:9px;font-weight:600;color:${colors[t.status]||'var(--muted)'}">${t.status}${clickable?' ↗':''}</span>
+      </div>`}).join('')}
   `
+  // click su singola riga: se ha file aprilo nel viewer
+  popup.querySelectorAll('[data-popup-idx]').forEach((el,i)=>{
+    const t=recent[i]
+    const ft=_codaFileTarget(t)
+    if(ft){
+      el.addEventListener('click',e=>{
+        e.stopPropagation()
+        popup.remove()
+        const idx=_files.findIndex(f=>f.name===ft.name)
+        if(idx>=0){ showFile(idx); setMode(3) }
+        else{ toast(`File non ancora disponibile: ${ft.name}`,'warn','!') }
+      })
+    }
+  })
+  // click sul popup generico (fuori dalle righe) chiude
   popup.addEventListener('click',()=>popup.remove())
   document.body.appendChild(popup)
   setTimeout(()=>document.getElementById('quick-popup')?.remove(),6000)
