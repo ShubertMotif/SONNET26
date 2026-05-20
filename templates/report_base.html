@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITOLO}}</title>
+<style>
+/* ── RESET ─────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6;padding:28px 32px;max-width:1100px;margin:0 auto}
+
+/* ── TEMA ──────────────────────────────────────────────── */
+:root{
+  --bg:#0d1117;    --bg2:#161b22;   --bg3:#1c2128;
+  --border:#30363d; --border2:#21262d;
+  --text:#e6edf3;  --muted:#8b949e; --dim:#484f58;
+  --accent:#f0883e;
+  --purple:#c4a0fa; --blue:#79c0ff;  --green:#56d364;
+  --red:#ff7b72;   --yellow:#e3b341; --orange:#d29922;
+  --teal:#39d353;  --pink:#f778ba;
+}
+
+/* ── TIPOGRAFIA ─────────────────────────────────────────── */
+h1{font-size:1.9rem;color:var(--accent);border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:28px}
+h2{font-size:1.15rem;color:var(--blue);margin:28px 0 12px;padding-left:8px;border-left:3px solid var(--blue)}
+h3{font-size:1rem;color:var(--yellow);margin:16px 0 8px}
+h4{font-size:.9rem;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:1px}
+p{margin:8px 0;color:var(--text)}
+strong{color:var(--accent);font-weight:600}
+em{color:var(--muted);font-style:italic}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── GRID / LAYOUT ──────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:16px 0}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:16px 0}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+@media(max-width:700px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+
+/* ── CARD ───────────────────────────────────────────────── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card-accent{border-color:var(--accent)}
+.card-blue  {border-color:var(--blue)}
+.card-green {border-color:var(--green)}
+.card-red   {border-color:var(--red)}
+.card-yellow{border-color:var(--yellow)}
+.card-purple{border-color:var(--purple)}
+
+/* ── STAT CARD ──────────────────────────────────────────── */
+.stat{text-align:center;padding:20px 16px}
+.stat .num{font-size:2.2rem;font-weight:700;color:var(--accent);line-height:1.1}
+.stat .unit{font-size:1rem;color:var(--muted);margin-left:3px}
+.stat .lbl{font-size:.8rem;color:var(--muted);margin-top:6px;letter-spacing:.5px}
+.stat .sub{font-size:.75rem;color:var(--dim);margin-top:2px}
+
+/* ── TABELLA ────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-size:.9rem;margin:12px 0}
+.tbl th{background:var(--bg3);color:var(--muted);font-weight:600;padding:8px 12px;text-align:left;border-bottom:2px solid var(--border);font-size:.8rem;letter-spacing:.5px;text-transform:uppercase}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--border2);color:var(--text)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--bg3)}
+.tbl td:first-child{color:var(--muted)}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .hl{color:var(--accent);font-weight:600}
+
+/* ── PROP TABLE (chiave→valore) ─────────────────────────── */
+.props{width:100%;border-collapse:collapse;font-size:.9rem}
+.props td{padding:6px 10px;border-bottom:1px solid var(--border2)}
+.props td:first-child{color:var(--muted);width:42%;font-size:.85rem}
+.props td:last-child{font-weight:500}
+.props tr:last-child td{border-bottom:none}
+
+/* ── LISTA ──────────────────────────────────────────────── */
+.list{list-style:none;padding:0}
+.list li{padding:7px 0;border-bottom:1px solid var(--border2);display:flex;align-items:flex-start;gap:8px}
+.list li:last-child{border-bottom:none}
+.list li::before{content:"▸";color:var(--accent);flex-shrink:0;margin-top:1px}
+.list-num{counter-reset:li}
+.list-num li::before{counter-increment:li;content:counter(li)".";color:var(--accent);min-width:18px;text-align:right}
+
+/* ── BOX ────────────────────────────────────────────────── */
+.box{border-radius:6px;padding:14px 16px;margin:12px 0;border-left:4px solid}
+.box-info   {background:rgba(121,192,255,.08);border-color:var(--blue)}
+.box-warn   {background:rgba(227,179,65,.08); border-color:var(--yellow)}
+.box-danger {background:rgba(255,123,114,.08);border-color:var(--red)}
+.box-ok     {background:rgba(86,211,100,.08); border-color:var(--green)}
+.box-note   {background:rgba(196,160,250,.08);border-color:var(--purple)}
+.box h3,.box h4{margin-top:0}
+.box-info h3,.box-info h4{color:var(--blue)}
+.box-warn h3,.box-warn h4{color:var(--yellow)}
+.box-danger h3,.box-danger h4{color:var(--red)}
+.box-ok h3,.box-ok h4{color:var(--green)}
+.box-note h3,.box-note h4{color:var(--purple)}
+
+/* ── CODE / FORMULA ─────────────────────────────────────── */
+.code{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-family:'Courier New',monospace;font-size:.85rem;color:var(--yellow);margin:10px 0;overflow-x:auto;white-space:pre-wrap}
+code{background:var(--bg3);border:1px solid var(--border2);border-radius:3px;padding:1px 5px;font-family:monospace;font-size:.85em;color:var(--yellow)}
+.formula{background:var(--bg3);border-left:3px solid var(--yellow);padding:10px 14px;border-radius:4px;font-family:monospace;color:var(--yellow);margin:8px 0}
+
+/* ── TAG / BADGE ────────────────────────────────────────── */
+.tag{display:inline-block;padding:2px 9px;border-radius:12px;font-size:.72rem;margin:2px;border:1px solid;font-weight:500}
+.tag-accent {color:var(--accent); border-color:var(--accent); background:rgba(240,136,62,.12)}
+.tag-blue   {color:var(--blue);   border-color:var(--blue);   background:rgba(121,192,255,.1)}
+.tag-green  {color:var(--green);  border-color:var(--green);  background:rgba(86,211,100,.1)}
+.tag-red    {color:var(--red);    border-color:var(--red);    background:rgba(255,123,114,.1)}
+.tag-yellow {color:var(--yellow); border-color:var(--yellow); background:rgba(227,179,65,.1)}
+.tag-purple {color:var(--purple); border-color:var(--purple); background:rgba(196,160,250,.1)}
+.tag-gray   {color:var(--muted);  border-color:var(--border); background:var(--bg3)}
+
+/* ── PROGRESS BAR ───────────────────────────────────────── */
+.bar-wrap{background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;margin:6px 0}
+.bar{height:100%;border-radius:4px;background:var(--accent);transition:width .3s}
+.bar.blue  {background:var(--blue)}
+.bar.green {background:var(--green)}
+.bar.red   {background:var(--red)}
+.bar.yellow{background:var(--yellow)}
+
+/* ── TIMELINE ───────────────────────────────────────────── */
+.timeline{position:relative;padding-left:24px;margin:12px 0}
+.timeline::before{content:'';position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border)}
+.tl-item{position:relative;margin-bottom:16px}
+.tl-item::before{content:'';position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.tl-date{font-size:.78rem;color:var(--muted);margin-bottom:2px}
+.tl-title{font-size:.95rem;font-weight:600;color:var(--text)}
+.tl-desc{font-size:.85rem;color:var(--muted);margin-top:3px}
+
+/* ── SEZIONE A DUE COLONNE TESTO+DATI ───────────────────── */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:16px 0;align-items:start}
+@media(max-width:600px){.split{grid-template-columns:1fr}}
+
+/* ── FOOTER ─────────────────────────────────────────────── */
+footer{margin-top:36px;padding-top:14px;border-top:1px solid var(--border);font-size:.78rem;color:var(--dim);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     BLOCCHI DISPONIBILI — usare come riferimento
+     ═══════════════════════════════════════════════════════
+
+  TITOLO
+    <h1>Titolo principale</h1>
+    <h2>Sezione</h2>  <h3>Sottosezione</h3>
+
+  GRIGLIA CARD
+    <div class="grid">   — auto-fit 260px
+    <div class="grid-2"> — 2 colonne fisse
+    <div class="grid-3"> — 3 colonne fisse
+    <div class="grid-4"> — 4 colonne fisse
+
+  CARD
+    <div class="card card-blue">...</div>
+    colori: card-accent, card-blue, card-green, card-red, card-yellow, card-purple
+
+  STAT CARD
+    <div class="card stat">
+      <div class="num">280<span class="unit">Mt</span></div>
+      <div class="lbl">Produzione annua</div>
+      <div class="sub">fonte: ICIS 2024</div>
+    </div>
+
+  TABELLA DATI
+    <table class="tbl">
+      <tr><th>Nome</th><th>Valore</th></tr>
+      <tr><td>Riga</td><td class="hl">dato</td></tr>
+    </table>
+
+  TABELLA PROPRIETÀ
+    <table class="props">
+      <tr><td>Peso mol.</td><td>98,08 g/mol</td></tr>
+    </table>
+
+  LISTA
+    <ul class="list"><li>Elemento</li></ul>
+    <ol class="list list-num"><li>Elemento</li></ol>
+
+  BOX
+    <div class="box box-info"><h4>Info</h4><p>testo</p></div>
+    <div class="box box-warn"><h4>Attenzione</h4><p>testo</p></div>
+    <div class="box box-danger"><h4>Pericolo</h4><p>testo</p></div>
+    <div class="box box-ok"><h4>Ok</h4><p>testo</p></div>
+    tipi: box-info, box-warn, box-danger, box-ok, box-note
+
+  CODICE / FORMULA
+    <div class="code">comando --flag valore</div>
+    <div class="formula">2 SO₂ + O₂ ⇌ 2 SO₃</div>
+    <code>inline</code>
+
+  TAG
+    <span class="tag tag-blue">Etichetta</span>
+    tipi: tag-accent, tag-blue, tag-green, tag-red, tag-yellow, tag-purple, tag-gray
+
+  BARRA PROGRESSO
+    <div class="bar-wrap"><div class="bar green" style="width:75%"></div></div>
+
+  TIMELINE
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-date">2024</div>
+        <div class="tl-title">Evento</div>
+        <div class="tl-desc">Descrizione</div>
+      </div>
+    </div>
+
+  SPLIT (testo + dati affiancati)
+    <div class="split">
+      <div><p>Testo descrittivo...</p></div>
+      <div class="card"><table class="props">...</table></div>
+    </div>
+
+  FOOTER
+    <footer>
+      <span>Report generato da {{MODELLO}} — {{DATA}}</span>
+      <span>SONNET26</span>
+    </footer>
+
+═══════════════════════════════════════════════════════ -->
+
+<!-- CONTENUTO DEL REPORT QUI -->
+
+<h1>{{TITOLO}}</h1>
+
+{{CONTENUTO}}
+
+<footer>
+  <span>Report generato da {{MODELLO}} — {{DATA}}</span>
+  <span>SONNET26</span>
+</footer>
+
+</body>
+</html>
