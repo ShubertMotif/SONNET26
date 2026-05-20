@@ -6,6 +6,7 @@ import os
 import time
 import datetime
 import requests
+import report as _report
 
 CODA_FILE  = os.path.join(os.path.dirname(__file__), "../data/coda.json")
 _TEMPLATE_FILE = os.path.join(os.path.dirname(__file__), "../templates/report_base.html")
@@ -315,9 +316,14 @@ def _run_dual_deep(task):
             except Exception:
                 continue
 
-        # Salva file completo
+        # Pulizia output e salvataggio
+        cleaned = _report.fix_output(
+            accumulated,
+            fallback_title=task.get("label", "Report"),
+            fallback_model="DeepSonnet26",
+        )
         with open(task["path_deep"], "w", encoding="utf-8") as f:
-            f.write(accumulated)
+            f.write(cleaned)
 
         _update_dual_deep(task["id"], "done", accumulated[:2000], done=True)
     except Exception as e:

@@ -5,6 +5,7 @@ import subprocess, os, json, requests, time, datetime
 
 import coda as coda_module
 import scheduler as sched_module
+import report as report_module
 
 app = Flask(__name__)
 CORS(app)
@@ -379,6 +380,61 @@ def api_log_add():
     e = request.json or {}
     log_append(e.get("type",""), e.get("action",""), e.get("detail",""))
     return jsonify({"ok": True})
+
+# ── Report HTML da Python ────────────────────────────────────
+@app.route("/api/report", methods=["POST"])
+def api_report():
+    """
+    Genera un file HTML da struttura JSON.
+    Body: {
+      "title": "Titolo report",
+      "filename": "nome_file_claude.html",   (opzionale, default slugify(title))
+      "model": "Claude",                      (opzionale)
+      "sections": [                           (lista ordinata di blocchi)
+        {"type": "h2",      "text": "Sezione"},
+        {"type": "p",       "text": "Paragrafo"},
+        {"type": "box",     "text": "...", "color": "info"},
+        {"type": "table",   "headers": [...], "rows": [...]},
+        {"type": "props",   "pairs": [[k,v], ...]},
+        {"type": "stats",   "items": [[num,lbl], ...]},
+        {"type": "code",    "text": "..."},
+        {"type": "list",    "items": [...], "ordered": false},
+        {"type": "bar",     "label": "...", "pct": 75, "color": "green"},
+        {"type": "html",    "html": "<div>...</div>"}
+      ]
+    }
+    """
+    data = request.json or {}
+    title    = data.get("title", "Report").strip()
+    model    = data.get("model", "Claude")
+    filename = data.get("filename", "").strip()
+    if not filename:
+        import re
+        filename = re.sub(r'[^\w]+', '_', title.lower())[:40].strip('_') + "_claude.html"
+    path = os.path.join(DIR_CLAUDE, filename)
+
+    blocks = []
+    for s in data.get("sections", []):
+        t = s.get("type","")
+        if   t == "h2":     blocks.append(report_module.h2(s.get("text","")))
+        elif t == "h3":     blocks.append(report_module.h3(s.get("text","")))
+        elif t == "p":      blocks.append(report_module.p(s.get("text","")))
+        elif t == "box":    blocks.append(report_module.box(s.get("text",""), s.get("color","info")))
+        elif t == "code":   blocks.append(report_module.code(s.get("text","")))
+        elif t == "formula":blocks.append(report_module.formula(s.get("text","")))
+        elif t == "table":  blocks.append(report_module.table(s.get("headers",[]), s.get("rows",[])))
+        elif t == "props":  blocks.append(report_module.props(s.get("pairs",[])))
+        elif t == "stats":  blocks.append(report_module.stat_row(s.get("items",[]), s.get("colors")))
+        elif t == "list":
+            fn = report_module.list_ol if s.get("ordered") else report_module.list_ul
+            blocks.append(fn(s.get("items",[])))
+        elif t == "bar":    blocks.append(report_module.bar(s.get("label",""), s.get("pct",0), s.get("color","")))
+        elif t == "html":   blocks.append(s.get("html",""))
+
+    html = report_module.make(title, blocks, model)
+    report_module.save(html, path)
+    log_append("claude", "report", filename)
+    return jsonify({"ok": True, "path": path, "filename": filename})
 
 # ── Status ───────────────────────────────────────────────────
 @app.route("/api/status")
