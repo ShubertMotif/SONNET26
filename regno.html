@@ -653,22 +653,35 @@ function _codaMoveSel(dir){
   })
 }
 
+function _openFileInViewer(filename){
+  const idx=_files.findIndex(f=>f.name===filename)
+  if(idx>=0){ showFile(idx); setMode(3) }
+  else toast(`File non ancora disponibile: ${filename}`,'warn','!')
+}
+
 async function _codaStartSel(){
   if(_codaSelIdx<0||_codaSelIdx>=_codaTasks.length) return
   const t=_codaTasks[_codaSelIdx]
+
   if(t._row==='claude'){
-    toast(`⬡C Claude side — scrivi HTML e accodalo con write_claude=false`,'info','⬡'); return
+    if(t.worker_claude==='done'&&t.file_claude){ _openFileInViewer(t.file_claude); return }
+    toast(`⬡C — ${t.worker_claude||'pending'}`,'info','⬡'); return
   }
+
   if(t._row==='deep'){
-    if(t.worker_deep!=='standby'){ toast(`◈D non in standby (${t.worker_deep})`,'warn','!'); return }
+    if(t.worker_deep==='done'&&t.file_deep){ _openFileInViewer(t.file_deep); return }
+    if(t.worker_deep!=='standby'){ toast(`◈D — ${t.worker_deep}`,'warn','!'); return }
     try{
       await fetch(`/api/coda/start/${t.id}`,{method:'POST'})
       toast(`◈D avviato: ${t.label||t.id}`,'info','⚡')
     }catch(e){ toast('Errore avvio','error','✗') }
     return
   }
+
   // task standard
-  if(t.status!=='standby'){ toast(`${t.label||t.id}: non in standby (${t.status})`,'warn','!'); return }
+  const stdFile=t.file_claude
+  if((t.status==='done'||t.status==='error')&&stdFile){ _openFileInViewer(stdFile); return }
+  if(t.status!=='standby'){ toast(`${t.label||t.id}: ${t.status}`,'warn','!'); return }
   try{
     await fetch(`/api/coda/start/${t.id}`,{method:'POST'})
     toast(`Avviato: ${t.label||t.id}`,'info','⚡')

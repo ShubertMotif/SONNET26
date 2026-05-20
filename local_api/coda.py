@@ -32,6 +32,20 @@ ISTRUZIONI:
 - Scegli i blocchi adatti al contenuto — non usarli tutti, solo quelli che servono
 - Dati accurati, layout a sezioni logiche con h2/h3
 - Output: HTML completo e autosufficiente"""
+
+_CLAUDE_SYSTEM = """Sei Claude, AI locale. Genera una risposta HTML sintetica e diretta in italiano.
+
+REGOLA FONDAMENTALE: rispondi SOLO con HTML valido, niente testo fuori dal tag <html>.
+
+USA QUESTO TEMPLATE BASE:
+
+""" + _load_template() + """
+
+ISTRUZIONI:
+- Risposta concisa — 2-3 sezioni, vai subito al punto
+- Sostituisci {{TITOLO}}, {{CONTENUTO}}, {{MODELLO}} = Claude, {{DATA}} con la data odierna
+- Usa .card, .box-*, .tbl dove serve — niente decorazioni inutili
+- Output: HTML completo autosufficiente"""
 DIR_CLAUDE = "/home/mattia/Scrivania/SONNET26/output_claude"
 DIR_DEEP   = "/mnt/sda3/SONNET26_DATA/output_deep"
 
@@ -407,24 +421,103 @@ def _run_dual_deep(task):
         _update_dual_deep(task["id"], "error", str(e), done=True)
 
 
+def _update_dual_claude(task_id, worker_status, output_claude=None):
+    with _lock:
+        tasks = _load()
+        for t in tasks:
+            if t["id"] == task_id:
+                t["worker_claude"] = worker_status
+                if output_claude is not None:
+                    t["output_claude"] = output_claude[:2000]
+                if worker_status == "running" and not t.get("started_claude"):
+                    t["started_claude"] = _now()
+                if worker_status in ("done", "error"):
+                    t["finished_claude"] = _now()
+        _save(tasks)
+
+
+def _run_dual_claude(task):
+    _update_dual_claude(task["id"], "running")
+    try:
+        r = requests.post(
+            "http://localhost:11434/api/chat",
+            json={
+                "model": "deepsonnet26",
+                "messages": [
+                    {"role": "system", "content": _CLAUDE_SYSTEM},
+                    {"role": "user", "content": task["payload"]},
+                ],
+                "stream": True,
+                "options": {"num_predict": 1200},
+            },
+            stream=True,
+            timeout=180,
+        )
+        accumulated = ""
+        for line in r.iter_lines():
+            if not line:
+                continue
+            try:
+                chunk = json.loads(line)
+                token = chunk.get("message", {}).get("content", "")
+                if token:
+                    accumulated += token
+                if chunk.get("done"):
+                    break
+            except Exception:
+                continue
+
+        cleaned = _report.fix_output(
+            accumulated,
+            fallback_title=task.get("label", "Report"),
+            fallback_model="Claude",
+        )
+        os.makedirs(DIR_CLAUDE, exist_ok=True)
+        with open(task["path_claude"], "w", encoding="utf-8") as f:
+            f.write(cleaned)
+
+        _update_dual_claude(task["id"], "done", accumulated[:2000])
+    except Exception as e:
+        _update_dual_claude(task["id"], "error", str(e))
+
+
 def _worker_loop():
     while True:
         task_to_run = None
+        run_as = None
         with _lock:
             tasks = _load()
+            # 1. task standard
             for t in tasks:
                 if t["status"] == "pending" and t["type"] != "dual":
                     task_to_run = t
+                    run_as = "standard"
                     break
-            if task_to_run is None:
+            # 2. worker deep
+            if not task_to_run:
                 for t in tasks:
                     if t["type"] == "dual" and t.get("worker_deep") == "pending":
                         task_to_run = t
+                        run_as = "deep"
                         break
+            # 3. worker claude (solo se Ollama non è già occupato con deep)
+            if not task_to_run:
+                deep_running = any(
+                    t["type"] == "dual" and t.get("worker_deep") == "running"
+                    for t in tasks
+                )
+                if not deep_running:
+                    for t in tasks:
+                        if t["type"] == "dual" and t.get("worker_claude") == "pending":
+                            task_to_run = t
+                            run_as = "claude"
+                            break
 
         if task_to_run:
-            if task_to_run["type"] == "dual":
+            if run_as == "deep":
                 _run_dual_deep(task_to_run)
+            elif run_as == "claude":
+                _run_dual_claude(task_to_run)
             else:
                 _run_standard(task_to_run)
         else:
