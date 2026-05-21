@@ -321,6 +321,15 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
     </div>
     <iframe id="result-frame" src="about:blank" style="display:none"></iframe>
 
+    <!-- VIEWER NEW REQUEST panel -->
+    <div id="viewer-new" style="display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg)">
+      <div style="font-size:10px;color:var(--dim);letter-spacing:2px">NUOVA RICHIESTA</div>
+      <input id="viewer-new-input"
+        style="background:var(--bg2);border:1px solid var(--purple);border-radius:4px;color:var(--text);font-size:13px;padding:8px 14px;width:420px;max-width:90%;outline:none;font-family:system-ui,sans-serif"
+        placeholder="prompt → ↵ invia a entrambi i modelli…" autocomplete="off"/>
+      <div style="font-size:9px;color:var(--dim)">← ultimo · → più recente</div>
+    </div>
+
     <!-- TAB 6: GPU GEAR VIEWER -->
     <div id="gear-panel" style="flex:1;display:none;flex-direction:column;position:relative;overflow:hidden;background:var(--bg)">
       <img id="gear-canvas-big" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;display:block">
@@ -554,7 +563,7 @@ function renderDual(dual){
 }
 
 // ── HTML VIEWER ──
-let _files=[], _fileIdx=0
+let _files=[], _fileIdx=0, _viewerNew=false
 
 function buildFiles(output){
   const list=[]
@@ -564,6 +573,8 @@ function buildFiles(output){
 }
 
 function showFile(idx){
+  document.getElementById('viewer-new').style.display='none'
+  _viewerNew=false
   if(!_files.length){
     document.getElementById('viewer-empty').style.display='flex'
     document.getElementById('result-frame').style.display='none'
@@ -583,12 +594,45 @@ function showFile(idx){
   const srcEl=document.getElementById('viewer-src')
   srcEl.textContent=f.src==='claude'?'⬡ Claude':'◈ Deep'
   srcEl.className='viewer-src '+(f.src==='claude'?'src-claude':'src-deep')
-  document.getElementById('nav-prev').disabled=_files.length<=1
-  document.getElementById('nav-next').disabled=_files.length<=1
+  document.getElementById('nav-prev').disabled=false
+  document.getElementById('nav-next').disabled=false
 }
 
-function nextFile(){showFile(_fileIdx+1)}
-function prevFile(){showFile(_fileIdx-1)}
+function _showViewerNew(){
+  _viewerNew=true
+  document.getElementById('viewer-empty').style.display='none'
+  document.getElementById('result-frame').style.display='none'
+  document.getElementById('viewer-new').style.display='flex'
+  document.getElementById('viewer-label').textContent='◈ nuova richiesta'
+  document.getElementById('viewer-src').textContent=''
+  document.getElementById('nav-prev').disabled=false
+  document.getElementById('nav-next').disabled=false
+  setTimeout(()=>document.getElementById('viewer-new-input').focus(),50)
+}
+
+async function _viewerNewSubmit(){
+  const inp=document.getElementById('viewer-new-input')
+  const v=inp.value.trim()
+  if(!v)return
+  inp.value=''
+  const label=v.substring(0,50)
+  try{
+    await post('/api/session/add_tasks',{session_id:_todayKey(),tasks:[{label,brief:v}]})
+    toast(label,'info','⬡◈')
+    refreshAll()
+    showFile(0)
+  }catch(e){toast('Errore: '+e.message,'error','✗')}
+}
+
+function nextFile(){
+  if(_viewerNew){_viewerNew=false;showFile(0);return}
+  showFile(_fileIdx+1)
+}
+function prevFile(){
+  if(_viewerNew){_viewerNew=false;showFile(_files.length-1);return}
+  if(_fileIdx===0&&_files.length){_showViewerNew();return}
+  showFile(_fileIdx-1)
+}
 
 function updateFiles(output){
   const newFiles=buildFiles(output)
@@ -651,11 +695,17 @@ function setMode(m){
   } else {
     gearPanel.style.display='none'
     viewerNav.style.display=''
-    // Restore viewer state
-    if(_files.length){
+    const vNew=document.getElementById('viewer-new')
+    if(_viewerNew){
+      vNew.style.display='flex'
+      document.getElementById('viewer-empty').style.display='none'
+      document.getElementById('result-frame').style.display='none'
+    } else if(_files.length){
+      vNew.style.display='none'
       document.getElementById('viewer-empty').style.display='none'
       document.getElementById('result-frame').style.display='block'
     } else {
+      vNew.style.display='none'
       document.getElementById('viewer-empty').style.display='flex'
       document.getElementById('result-frame').style.display='none'
     }
@@ -1095,6 +1145,10 @@ async function quickAdd(){
 document.getElementById('q-payload').addEventListener('keydown',e=>{
   if(e.key==='Enter'){e.preventDefault();quickAdd();return}
   if('12345'.includes(e.key)&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();setMode(+e.key)}
+})
+document.getElementById('viewer-new-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.ctrlKey){e.preventDefault();_viewerNewSubmit();return}
+  if(e.key==='Escape'){e.target.blur()}
 })
 
 // ── START ──
