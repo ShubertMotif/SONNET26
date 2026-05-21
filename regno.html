@@ -1149,6 +1149,8 @@ document.getElementById('q-payload').addEventListener('keydown',e=>{
 document.getElementById('viewer-new-input').addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.ctrlKey){e.preventDefault();_viewerNewSubmit();return}
   if(e.key==='Escape'){e.target.blur();return}
+  if(e.key==='ArrowLeft') {e.preventDefault();prevFile();return}
+  if(e.key==='ArrowRight'){e.preventDefault();nextFile();return}
   if('123456'.includes(e.key)&&!e.ctrlKey&&!e.altKey&&!e.metaKey){e.preventDefault();setMode(+e.key)}
 })
 
