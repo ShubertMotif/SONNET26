@@ -1,0 +1,59 @@
+{
+  "model": {
+    "name": "deepsonnet26",
+    "base": "deepseek-r1:14b",
+    "version": "2.0",
+    "created": "2026-05-21",
+    "author": "Adelchi Group SRLS — Mattia",
+    "description": "Modello locale ottimizzato per RTX 3060 12GB. Base DeepSeek-R1 14B Q4. Specializzato in report HTML, analisi business, tecnico-scientifico, italiano."
+  },
+  "hardware": {
+    "target_gpu": "RTX 3060 12GB",
+    "num_gpu": 99,
+    "num_thread": 16,
+    "vram_estimated_gb": 8.5,
+    "quantization": "Q4_K_M"
+  },
+  "generation": {
+    "num_ctx": 8192,
+    "num_predict": 4096,
+    "temperature": 0.4,
+    "top_p": 0.85,
+    "top_k": 40,
+    "repeat_penalty": 1.1,
+    "repeat_last_n": 128,
+    "stop": ["<|im_end|>", "<|endoftext|>"]
+  },
+  "missions": {
+    "1_html_python": "Output HTML/Python progressivo — migliora ad ogni iterazione",
+    "2_claude_training": "Apprende da Claude Sonnet come trainer gold-standard, produce output complementare",
+    "3_encyclopedia": "Ogni risposta aggiorna knowledge_base.json — enciclopedia strutturata per dominio"
+  },
+  "knowledge_base": "/mnt/sda3/SONNET26_DATA/knowledge_base.json",
+  "capabilities": [
+    "html_report_generation",
+    "python_code",
+    "progressive_learning",
+    "claude_alignment",
+    "encyclopedia_management",
+    "sea_markets",
+    "drone_vtol_mavlink",
+    "stm32_iot",
+    "trading_algoritmico",
+    "eico_cosmesi",
+    "nginx_flask_sqlite",
+    "blockchain_adg"
+  ],
+  "paths": {
+    "modelfile": "/mnt/sda3/SONNET26_DATA/DeepSonnet26/Modelfile",
+    "logs": "/mnt/sda3/SONNET26_DATA/DeepSonnet26/logs/",
+    "venv": "/mnt/sda3/SONNET26_DATA/DeepSonnet26/venv/",
+    "app": "/mnt/sda3/SONNET26_DATA/DeepSonnet26/app.py"
+  },
+  "api": {
+    "port": 5051,
+    "endpoint_chat": "http://localhost:5051/api/chat",
+    "endpoint_status": "http://localhost:5051/api/status",
+    "ollama_direct": "http://localhost:11434/api/chat"
+  }
+}
