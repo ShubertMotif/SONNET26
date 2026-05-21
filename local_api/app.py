@@ -8,6 +8,7 @@ import db as db_module
 import scheduler as sched_module
 import report as report_module
 import fps_monitor as fps_module
+import watchdog as watchdog_module
 
 app = Flask(__name__)
 CORS(app)
@@ -77,6 +78,7 @@ def _save_state():
 _load_state()
 _log_prime()
 fps_module.start()
+watchdog_module.start()
 
 # ── Filetree cache (TTL 30s) ─────────────────────────────────
 _ftcache = {"ts": 0, "ssd": [], "deep": []}
@@ -656,7 +658,15 @@ def session_cancel(sid):
 # ── Status ───────────────────────────────────────────────────
 @app.route("/api/status")
 def api_status():
-    return jsonify({"status": "online", "service": "SONNET26-LocalAPI", "version": "3.0"})
+    return jsonify({
+        "status": "online", "service": "SONNET26-LocalAPI", "version": "3.1",
+        "watchdog": {
+            "active": True,
+            "stuck_secs": watchdog_module.STUCK_SECS,
+            "fps_threshold": watchdog_module.FPS_HIGH,
+            "util_threshold": watchdog_module.UTIL_LOW,
+        }
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5052, debug=False)
