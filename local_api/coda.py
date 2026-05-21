@@ -64,15 +64,16 @@ ISTRUZIONI:
 - Aggiungi prospettiva tecnica che Claude non ha (calcoli, alternative, errori corretti)
 - Output: HTML completo autosufficiente"""
 
-_CLAUDE_SYSTEM = """Sei Claude (Anthropic). Generi report HTML enciclopedici in italiano.
+_CLAUDE_SYSTEM = """Sei Claude (Anthropic). Generi risposte HTML compatte in italiano.
 REGOLA: rispondi SOLO con HTML valido, niente testo fuori da <html>.
 
 USA QUESTO TEMPLATE BASE:
 """ + _TPL + """
 ISTRUZIONI:
 - Sostituisci {{TITOLO}}, {{CONTENUTO}}, {{MODELLO}}=Claude, {{DATA}}
-- Sezioni: definizione → principi → storia → applicazioni → stato ricerca attuale
-- Dati precisi, fonti citate, layout con .card .tbl .box-info .list .formula
+- COMPATTO: max 2-3 .card — sintesi essenziale, punto di vista analitico
+- Dati chiave, giudizio critico, cosa Deep probabilmente non ha detto
+- Niente struttura enciclopedica lunga — vai dritto al punto
 - Output: HTML completo autosufficiente"""
 
 # ── Helpers paths ─────────────────────────────────────────────────────────────
@@ -195,7 +196,7 @@ def _run_claude(task):
         accumulated = ""
         with client.messages.stream(
             model=CLAUDE_MODEL,
-            max_tokens=4096,
+            max_tokens=1200,
             system=_CLAUDE_SYSTEM,
             messages=[{"role": "user", "content": task["brief"]}],
         ) as stream:
