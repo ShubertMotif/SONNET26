@@ -155,11 +155,11 @@ def task_next_deep():
         return dict(row) if row else None
 
 def task_next_claude():
-    """Claude parte appena deep di quel task è done."""
+    """Claude parte appena deep è done o error (esegue comunque)."""
     with _conn() as c:
         row = c.execute("""
             SELECT * FROM tasks
-            WHERE worker_claude='pending' AND worker_deep='done'
+            WHERE worker_claude='pending' AND worker_deep IN ('done','error')
             ORDER BY priority ASC, created ASC LIMIT 1
         """).fetchone()
         return dict(row) if row else None
@@ -234,6 +234,13 @@ def task_cancel_session(sid):
             c.execute("""UPDATE tasks SET status='cancelled',
                          worker_deep='cancelled', worker_claude='cancelled'
                          WHERE session_id=? AND status IN ('pending','running')""", (sid,))
+
+def task_reset_running():
+    """All'avvio del worker: resetta running orfani → pending (da restart API)."""
+    with _lock:
+        with _conn() as c:
+            c.execute("UPDATE tasks SET worker_claude='pending' WHERE worker_claude='running'")
+            c.execute("UPDATE tasks SET worker_deep='pending',  status='pending' WHERE worker_deep='running'")
 
 def task_clear_done(session_id=None):
     with _lock:

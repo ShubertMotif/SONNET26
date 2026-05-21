@@ -255,6 +255,7 @@ _worker_thread = None
 def _ensure_worker():
     global _worker_thread
     if _worker_thread is None or not _worker_thread.is_alive():
+        _db.task_reset_running()
         _worker_thread = threading.Thread(target=_worker_loop, daemon=True)
         _worker_thread.start()
 
