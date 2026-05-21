@@ -220,6 +220,31 @@ def fix_output(raw, fallback_title="Report", fallback_model="DeepSonnet26"):
     return make(fallback_title, raw, fallback_model)
 
 
+# ── Iniezione immagini ───────────────────────────────────────────────────────
+
+def inject_images(html, images):
+    """
+    Inserisce strip di immagini dopo il primo </h1>.
+    images: lista di dict con 'rel_path', 'title', 'src'.
+    """
+    if not images:
+        return html
+    items = ''.join(
+        f'<a href="{img["rel_path"]}" target="_blank" style="flex-shrink:0">'
+        f'<img src="{img["rel_path"]}" alt="{img.get("title","")}" title="{img.get("title","")}"'
+        f' style="height:110px;width:auto;object-fit:cover;border-radius:4px;'
+        f'border:1px solid var(--border,#30363d);display:block"></a>'
+        for img in images
+    )
+    src_label = images[0].get('src', 'Wikipedia')
+    strip = (
+        f'\n<div style="display:flex;gap:8px;margin:12px 0 20px;flex-wrap:wrap;align-items:flex-end">'
+        f'{items}'
+        f'<span style="font-size:9px;color:var(--dim,#484f58);padding-bottom:3px">{src_label}</span>'
+        f'</div>\n'
+    )
+    return re.sub(r'(</h1>)', r'\1' + strip, html, count=1)
+
 # ── Template minimale di emergenza ───────────────────────────────────────────
 
 _MINIMAL_TPL = """<!DOCTYPE html>

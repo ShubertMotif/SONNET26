@@ -9,6 +9,7 @@ import anthropic
 import db as _db
 import report as _report
 import fps_monitor as _fps
+import image_search as _img
 
 # ── Identità ─────────────────────────────────────────────────────────────────
 _ID_FILE = os.path.join(os.path.dirname(__file__), "../data/identita.json")
@@ -188,12 +189,15 @@ def _run_deep(task):
                                      fallback_title=task["label"],
                                      fallback_model="DeepSonnet26")
         os.makedirs(DIR_DEEP, exist_ok=True)
+        images = _img.fetch_for_report(task["label"], DIR_DEEP, _slugify(task["label"]))
+        cleaned = _report.inject_images(cleaned, images)
         with open(task["path_deep"], "w", encoding="utf-8") as f:
             f.write(cleaned)
 
         _db.task_set_deep(task["id"], "done",
                           output=accumulated[:3000], toks_s=toks_s)
-        _log_api("deep", task["label"], f"✓ {task['file_deep']} ({toks_s} tok/s)")
+        img_info = f" +{len(images)}img" if images else ""
+        _log_api("deep", task["label"], f"✓ {task['file_deep']} ({toks_s} tok/s){img_info}")
 
     except Exception as e:
         _db.task_set_deep(task["id"], "error", output=str(e))
@@ -221,11 +225,14 @@ def _run_claude(task):
                                      fallback_title=task["label"],
                                      fallback_model="Claude")
         os.makedirs(DIR_CLAUDE, exist_ok=True)
+        images = _img.fetch_for_report(task["label"], DIR_CLAUDE, _slugify(task["label"]))
+        cleaned = _report.inject_images(cleaned, images)
         with open(task["path_claude"], "w", encoding="utf-8") as f:
             f.write(cleaned)
 
         _db.task_set_claude(task["id"], "done", output=accumulated[:3000])
-        _log_api("claude", task["label"], f"✓ {task['file_claude']}")
+        img_info = f" +{len(images)}img" if images else ""
+        _log_api("claude", task["label"], f"✓ {task['file_claude']}{img_info}")
 
     except Exception as e:
         _db.task_set_claude(task["id"], "error", output=str(e))
