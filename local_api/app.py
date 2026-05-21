@@ -1,7 +1,7 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response, stream_with_context
 from flask_cors import CORS
 from concurrent.futures import ThreadPoolExecutor
-import subprocess, os, json, requests, time, datetime
+import subprocess, os, json, requests, time, datetime, queue, threading
 
 import coda as coda_module
 import db as db_module
@@ -22,6 +22,20 @@ ALLOWED_ROOTS = ["/home/mattia", "/mnt/sda3"]
 
 # ── Log cache in memoria (no disk read a ogni poll) ──────────
 _log_cache = []
+
+# ── SSE broadcast ─────────────────────────────────────────────
+_sse_lock        = threading.Lock()
+_sse_subscribers = []   # lista di queue.Queue, una per connessione
+
+def _sse_broadcast(entry):
+    data = json.dumps(entry, ensure_ascii=False)
+    dead = []
+    with _sse_lock:
+        for q in _sse_subscribers:
+            try:    q.put_nowait(data)
+            except: dead.append(q)
+        for q in dead:
+            _sse_subscribers.remove(q)
 
 def _log_prime():
     """Carica il log dal disco una sola volta all'avvio."""
@@ -91,6 +105,7 @@ def log_append(type_, action, detail=""):
         _log_cache.append(entry)
         if len(_log_cache) > 500:
             del _log_cache[:-500]
+        _sse_broadcast(entry)
     except Exception:
         pass
 
@@ -467,6 +482,34 @@ def api_log_add():
     e = request.json or {}
     log_append(e.get("type",""), e.get("action",""), e.get("detail",""))
     return jsonify({"ok": True})
+
+@app.route("/api/log/stream")
+def api_log_stream():
+    """SSE: push ogni nuovo log entry ai subscriber."""
+    q = queue.Queue(maxsize=200)
+    with _sse_lock:
+        _sse_subscribers.append(q)
+
+    def generate():
+        for entry in _log_cache[-30:]:
+            yield f"data: {json.dumps(entry, ensure_ascii=False)}\n\n"
+        try:
+            while True:
+                try:
+                    data = q.get(timeout=25)
+                    yield f"data: {data}\n\n"
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+        finally:
+            with _sse_lock:
+                try: _sse_subscribers.remove(q)
+                except ValueError: pass
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 # ── Report HTML da Python ────────────────────────────────────
 @app.route("/api/report", methods=["POST"])
