@@ -37,19 +37,8 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 
 /* CONTROLS BAR */
 .ctrl-bar{background:var(--bg2);border-bottom:1px solid var(--border);padding:5px 16px;display:flex;align-items:center;gap:7px;flex-shrink:0}
-.quick-select{background:var(--bg3);border:1px solid var(--border);color:var(--purple);padding:3px 5px;border-radius:3px;font-family:monospace;font-size:10px}
-.quick-input{flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 9px;border-radius:3px;font-family:monospace;font-size:11px;outline:none}
+.quick-input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:3px;font-family:monospace;font-size:11px;outline:none}
 .quick-input:focus{border-color:var(--purple2)}
-.quick-btn{background:var(--purple2);border:none;color:#fff;padding:3px 11px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:10px}
-.quick-btn:hover{background:var(--purple)}
-.ds-btn{padding:3px 10px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:10px;letter-spacing:1px;border:1px solid #1a2a4a;background:var(--bg3);color:#3a4a6a;transition:all .2s}
-.ds-btn.on{border-color:var(--blue);color:var(--blue);background:#060e18}
-.ctrl-sep{width:1px;height:18px;background:var(--border);flex-shrink:0}
-.sched-btn{padding:2px 9px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:10px}
-.sched-start{background:#0a180a;border:1px solid #1a3a1a;color:var(--green)}
-.sched-stop{background:#150808;border:1px solid #2a1212;color:var(--red)}
-#sched-interval{background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:2px 5px;border-radius:3px;font-family:monospace;font-size:10px}
-#sched-status{font-size:10px;color:var(--muted)}
 
 /* MAIN GRID */
 .main-grid{flex:1;display:grid;grid-template-columns:38% 62%;overflow:hidden;min-height:0}
@@ -200,7 +189,6 @@ html[data-theme="light"] .viewer-empty-hint{color:#d0d0dc}
 html[data-theme="light"] .mode-btn.active{background:#ede9fe}
 html[data-theme="light"] .src-claude{background:#f5f3ff;border-color:#c4b5fd}
 html[data-theme="light"] .src-deep{background:#eff6ff;border-color:#bfdbfe}
-html[data-theme="light"] .ds-btn.on{background:#eff6ff;border-color:var(--blue);color:var(--blue)}
 html[data-theme="light"] ::-webkit-scrollbar-track{background:var(--bg2)}
 html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
 </style>
@@ -264,26 +252,7 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
 
 <!-- CONTROLS -->
 <div class="ctrl-bar">
-  <select class="quick-select" id="q-type">
-    <option value="prompt">AI</option>
-    <option value="shell">SH</option>
-    <option value="python">PY</option>
-    <option value="note">NOTE</option>
-  </select>
-  <input class="quick-input" id="q-payload" placeholder="comando / prompt / nota…" />
-  <button class="ds-btn" id="ds-btn" onclick="toggleDS()">◈ DS</button>
-  <button class="quick-btn" onclick="quickAdd()">+ CODA</button>
-  <span class="ctrl-sep"></span>
-  <span style="font-size:9px;color:var(--muted)">⏱</span>
-  <select id="sched-interval">
-    <option value="60">1min</option>
-    <option value="120" selected>2min</option>
-    <option value="180">3min</option>
-    <option value="300">5min</option>
-  </select>
-  <button class="sched-btn sched-start" onclick="schedStart()">▶</button>
-  <button class="sched-btn sched-stop" onclick="schedStop()">■</button>
-  <span id="sched-status">fermo</span>
+  <input class="quick-input" id="q-payload" placeholder="prompt → ↵ invia a entrambi i modelli…" autocomplete="off" />
 </div>
 
 <!-- MAIN GRID: left=log+coda | right=viewer -->
@@ -534,17 +503,8 @@ function renderSessions(sessions){
 }
 
 // ── DS + SCHED ──
-function renderDS(ds){
-  const b=document.getElementById('ds-btn');b.className='ds-btn'+(ds.on?' on':'');b.textContent=ds.on?'◈ DS ON':'◈ DS'
-}
-function renderScheduler(s){
-  const el=document.getElementById('sched-status')
-  if(s.running){
-    const sec=s.next_at?Math.max(0,s.next_at-Math.floor(Date.now()/1000)):0
-    el.textContent=s.current?`⚡ ${s.current.key.replace(/_/g,' ')} · ${sec}s`:`next ${sec}s`
-    el.style.color='var(--orange)'
-  }else{el.textContent=`fermo · ${s.done||0} fatti`;el.style.color='var(--muted)'}
-}
+function renderDS(ds){}
+function renderScheduler(s){}
 
 // ── LOG ──
 function renderLog(entries){
@@ -1117,15 +1077,22 @@ function _updateTopicUI(topic){
 async function schedStart(){const i=+document.getElementById('sched-interval').value;await post('/api/scheduler/start',{interval:i});toast('Scheduler avviato — ogni '+i+'s','done','⏱');refreshAll()}
 async function schedStop(){await post('/api/scheduler/stop');toast('Scheduler fermato','info','■');refreshAll()}
 
+function _todayKey(){
+  const d=new Date()
+  return 'claudecode_'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')
+}
 async function quickAdd(){
-  const type=document.getElementById('q-type').value
   const payload=document.getElementById('q-payload').value.trim()
   if(!payload)return
   document.getElementById('q-payload').value=''
-  try{await post('/api/task',{type,payload,label:payload.substring(0,50)});toast(payload.substring(0,45),'info','⬡');refreshAll()}
-  catch(e){toast('Errore: '+e.message,'error','✗')}
+  const label=payload.substring(0,50)
+  try{
+    await post('/api/session/add_tasks',{session_id:_todayKey(),tasks:[{label,brief:payload}]})
+    toast(label,'info','⬡◈')
+    refreshAll()
+  }catch(e){toast('Errore: '+e.message,'error','✗')}
 }
-document.getElementById('q-payload').addEventListener('keydown',e=>{if(e.key==='Enter'&&document.activeElement===document.getElementById('q-payload')){e.preventDefault();quickAdd()}})
+document.getElementById('q-payload').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();quickAdd()}})
 
 // ── START ──
 refreshAll()
