@@ -197,6 +197,17 @@ def fix_output(raw, fallback_title="Report", fallback_model="DeepSonnet26"):
         m = re.search(r'(<(!doctype|html)\b)', raw, flags=re.IGNORECASE)
         if m:
             raw = raw[m.start():]
+
+        # Inietta CSS se il modello ha scritto "/* CSS already included */" o style vuoto
+        style_m = re.search(r'<style>(.*?)</style>', raw, re.DOTALL | re.IGNORECASE)
+        if style_m:
+            content = style_m.group(1).strip()
+            if not content or 'css already included' in content.lower() or len(content) < 100:
+                tpl = _load_tpl()
+                css_m = re.search(r'<style>(.*?)</style>', tpl, re.DOTALL | re.IGNORECASE)
+                if css_m:
+                    raw = raw[:style_m.start(1)] + css_m.group(1) + raw[style_m.end(1):]
+
         # Chiudi tag mancanti
         lo = raw.lower()
         if '</body>' not in lo:
