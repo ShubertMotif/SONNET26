@@ -100,7 +100,7 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .coda-area .panel-hdr{position:sticky;top:0;z-index:1}
 .log-area:focus,.coda-area:focus{outline:none}
 .panel-active{outline:2px solid var(--purple2)!important;outline-offset:-2px}
-.coda-item{display:grid;grid-template-columns:52px 40px 1fr 64px 72px;gap:5px;padding:6px 14px;border-bottom:1px solid var(--border2);align-items:center;cursor:default}
+.coda-item{display:grid;grid-template-columns:52px 40px 1fr 72px;gap:5px;padding:6px 14px;border-bottom:1px solid var(--border2);align-items:center;cursor:default}
 .coda-model{font-size:8px;text-align:center;font-weight:600;white-space:nowrap}
 .coda-item:last-child{border-bottom:none}
 .coda-item.selected{background:rgba(121,192,255,.1);outline:1px solid var(--blue)}
@@ -468,7 +468,6 @@ function renderCoda(coda){
         <span class="coda-id">#${esc(t.id)}</span>
         <span class="coda-type" style="color:var(--purple);border-color:#2a1a4a">⬡C</span>
         <span class="coda-label">${esc(t.label||t.payload)}</span>
-        <span class="coda-model" style="color:var(--dim)">claude</span>
         <span class="coda-status" style="text-align:right">${_pill(wc)}</span>
       </div>`
     }
@@ -482,7 +481,6 @@ function renderCoda(coda){
         <span class="coda-id">#${esc(t.id)}</span>
         <span class="coda-type" style="color:var(--blue);border-color:#1a2a4a">◈D</span>
         <span class="coda-label">${esc(t.label||t.payload)}</span>
-        <span class="coda-model" style="color:var(--dim)">deep</span>
         <span class="coda-status" style="text-align:right">${dot}${_pill(wd)}</span>
       </div>`
     }
@@ -495,7 +493,6 @@ function renderCoda(coda){
       <span class="coda-id">#${esc(t.id)}</span>
       <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc((t.type||'task').toUpperCase())}</span>
       <span class="coda-label">${esc(t.label||t.payload)}</span>
-      <span class="coda-model" style="color:var(--dim)">—</span>
       <span class="coda-status" style="text-align:right">${dot}${_pill(t.status)}</span>
     </div>`
   }).join(''):'<div style="color:var(--dim);padding:8px 14px;font-size:10px">coda vuota</div>'
