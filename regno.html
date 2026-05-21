@@ -62,10 +62,12 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .panel-title{color:var(--muted);font-size:9px;letter-spacing:2px;text-transform:uppercase}
 .panel-meta{color:var(--dim);font-size:9px}
 .log-area{overflow-y:auto;flex:1;min-height:0}
-.log-entry{display:grid;grid-template-columns:98px 50px 88px 1fr;gap:5px;padding:4px 14px;border-bottom:1px solid var(--border2);align-items:start}
+.log-entry{display:flex;gap:5px;padding:2px 10px;border-bottom:1px solid var(--border2);align-items:center;overflow:hidden;white-space:nowrap;min-height:18px;border-left:2px solid transparent}
 .log-entry:hover{background:var(--bg2)}
-.log-ts{color:#2a2a4a;font-size:9px;font-variant-numeric:tabular-nums}
-.log-type{font-size:8px;font-weight:bold;letter-spacing:1px;padding:1px 3px;border-radius:2px;text-align:center}
+.log-entry.log-claude{border-left-color:var(--purple2)}
+.log-entry.log-deep{border-left-color:var(--blue)}
+.log-ts{color:#2a2a4a;font-size:8px;font-variant-numeric:tabular-nums;flex-shrink:0}
+.log-type{font-size:7px;font-weight:bold;letter-spacing:1px;padding:1px 4px;border-radius:2px;text-align:center;flex-shrink:0}
 .log-type.setup{color:var(--blue);background:#0a1020}
 .log-type.file{color:var(--green);background:#091409}
 .log-type.system{color:var(--orange);background:#1a0f00}
@@ -77,14 +79,21 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .log-type.claude{color:#c4a0fa;background:#100820}
 .log-type.deep{color:#7eb8f7;background:#060b12}
 .log-type.sched{color:#ffb74d;background:#160e00}
-.log-action{color:#3a3a5a;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.log-detail{color:#777;font-size:10px;line-height:1.4;word-break:break-word}
+.log-detail{color:#666;font-size:9px;overflow:hidden;text-overflow:ellipsis;flex:1}
 
 /* SESSIONS */
 .sessions-strip{border-top:1px solid var(--border);flex-shrink:0}
 .session-item{display:grid;grid-template-columns:1fr auto auto;gap:6px;padding:3px 14px;border-bottom:1px solid var(--border2);align-items:center;font-size:9px;cursor:default}
 .session-item:hover{background:var(--bg2)}
 .s-tag{padding:1px 5px;border-radius:2px;font-size:8px;font-weight:bold;letter-spacing:1px}
+
+/* STATUS PILLS */
+.pill{display:inline-block;font-size:7px;font-weight:bold;padding:1px 5px;border-radius:3px;letter-spacing:.5px}
+.pill-pending{color:#666;background:#1a1a1a;border:1px solid #333}
+.pill-running{color:#ff5555;background:#2a0808;border:1px solid #660000;animation:runpulse .9s ease-in-out infinite}
+.pill-done{color:#44dd88;background:#082a14;border:1px solid #005533}
+.pill-error{color:var(--red);background:#1a0808;border:1px solid var(--red)}
+.pill-standby{color:var(--yellow);background:#1a1400;border:1px solid #443300}
 
 /* CODA */
 .coda-area{border-top:1px solid var(--border);flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
@@ -289,15 +298,21 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
     <div class="log-area" id="log-area" tabindex="-1">
       <div style="color:var(--dim);padding:14px">caricamento…</div>
     </div>
-    <!-- FPS BOX: full-width gear animation -->
-    <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);height:20%;min-height:80px;overflow:hidden;position:relative">
-      <img id="fps-canvas" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:contain;display:block;image-rendering:pixelated">
-      <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:4px 8px;background:linear-gradient(transparent 50%,rgba(0,0,0,.75) 100%);pointer-events:none">
-        <div style="display:flex;align-items:baseline;gap:3px">
-          <span id="fps-val" style="font-size:20px;font-weight:700;color:#fff;font-family:'Courier New',monospace;text-shadow:0 0 8px var(--green)">—</span>
-          <span style="font-size:8px;color:rgba(255,255,255,.5);letter-spacing:1px">FPS</span>
+    <!-- FPS BOX: 60% gears + 40% chart -->
+    <div id="fps-box" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);height:20%;min-height:80px;overflow:hidden;display:flex;flex-direction:row">
+      <div style="width:60%;position:relative;overflow:hidden;flex-shrink:0">
+        <img id="fps-canvas" src="/api/fpsbox/frame" style="width:100%;height:100%;object-fit:contain;display:block;image-rendering:pixelated">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:4px 8px;background:linear-gradient(transparent 50%,rgba(0,0,0,.75) 100%);pointer-events:none">
+          <div style="display:flex;align-items:baseline;gap:3px">
+            <span id="fps-val" style="font-size:16px;font-weight:700;color:#fff;font-family:'Courier New',monospace;text-shadow:0 0 8px var(--green)">—</span>
+            <span style="font-size:7px;color:rgba(255,255,255,.5);letter-spacing:1px">FPS</span>
+          </div>
+          <div id="fps-dot" style="font-size:7px;color:rgba(255,255,255,.4);letter-spacing:1px">● CUDA</div>
         </div>
-        <div id="fps-dot" style="font-size:7px;color:rgba(255,255,255,.4);letter-spacing:1px">● CUDA</div>
+      </div>
+      <div style="flex:1;border-left:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;overflow:hidden">
+        <div style="font-size:7px;color:var(--dim);padding:2px 5px;flex-shrink:0;letter-spacing:1px">FPS/tempo</div>
+        <canvas id="fps-chart" style="flex:1;width:100%;display:block"></canvas>
       </div>
     </div>
 
@@ -439,24 +454,28 @@ function renderCoda(coda){
   document.getElementById('coda-list').innerHTML=rows.length?rows.map((t,i)=>{
     const sel=(_codaSelIdx===i)
 
+    function _pill(st){
+      if(st==='done')    return '<span class="pill pill-done">DONE</span>'
+      if(st==='running') return '<span class="pill pill-running">RUN</span>'
+      if(st==='error')   return '<span class="pill pill-error">ERR</span>'
+      if(st==='standby') return '<span class="pill pill-standby">WAIT</span>'
+      return '<span class="pill pill-pending">PEND</span>'
+    }
+
     if(t._row==='claude'){
       const wc=t.worker_claude||'pending'
-      const stCol=wc==='done'?'var(--green)':wc==='running'?'var(--orange)':wc==='error'?'var(--red)':'var(--muted)'
-      const icon=wc==='done'?'✓':wc==='running'?'⚡':wc==='error'?'✗':'○'
       return `<div class="coda-item${sel?' selected':''}" style="opacity:.7" data-idx="${i}">
         <span class="coda-id">#${esc(t.id)}</span>
         <span class="coda-type" style="color:var(--purple);border-color:#2a1a4a">⬡C</span>
         <span class="coda-label">${esc(t.label||t.payload)}</span>
         <span class="coda-model" style="color:var(--dim)">claude</span>
-        <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${icon} ${wc}</span>
+        <span class="coda-status" style="text-align:right">${_pill(wc)}</span>
       </div>`
     }
 
     if(t._row==='deep'){
       const wd=t.worker_deep||'pending'
       const isStandby=wd==='standby', isRunning=wd==='running'
-      const stCol=wd==='done'?'var(--green)':wd==='running'?'var(--orange)':wd==='error'?'var(--red)':wd==='standby'?'var(--yellow)':'var(--muted)'
-      const icon=wd==='done'?'✓':wd==='running'?'⚡':wd==='error'?'✗':wd==='standby'?'○':'⏳'
       const dot=isRunning?'<span class="run-dot"></span>':''
       const rowCls=`coda-item${sel?' selected':''}${isStandby?' standby-row':''}`
       return `<div class="${rowCls}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
@@ -464,13 +483,12 @@ function renderCoda(coda){
         <span class="coda-type" style="color:var(--blue);border-color:#1a2a4a">◈D</span>
         <span class="coda-label">${esc(t.label||t.payload)}</span>
         <span class="coda-model" style="color:var(--dim)">deep</span>
-        <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${dot}${icon} ${wd}</span>
+        <span class="coda-status" style="text-align:right">${dot}${_pill(wd)}</span>
       </div>`
     }
 
-    // task standard (shell/python/note/prompt legacy)
+    // task standard
     const isStandby=t.status==='standby', isRunning=t.status==='running'
-    const stCol=taskColor[t.status]||'var(--muted)'
     const dot=isRunning?'<span class="run-dot"></span>':''
     const rowCls=`coda-item${sel?' selected':''}${isStandby?' standby-row':''}`
     return `<div class="${rowCls}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
@@ -478,7 +496,7 @@ function renderCoda(coda){
       <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc((t.type||'task').toUpperCase())}</span>
       <span class="coda-label">${esc(t.label||t.payload)}</span>
       <span class="coda-model" style="color:var(--dim)">—</span>
-      <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${dot}${taskIcon[t.status]||'?'} ${t.status}</span>
+      <span class="coda-status" style="text-align:right">${dot}${_pill(t.status)}</span>
     </div>`
   }).join(''):'<div style="color:var(--dim);padding:8px 14px;font-size:10px">coda vuota</div>'
 
@@ -535,13 +553,17 @@ function renderScheduler(s){
 function renderLog(entries){
   document.getElementById('log-count').textContent=entries.length+' ops'
   if(!entries.length){document.getElementById('log-area').innerHTML='<div style="color:var(--dim);padding:14px;font-size:10px">nessun log</div>';return}
-  document.getElementById('log-area').innerHTML=[...entries].reverse().map(e=>`
-    <div class="log-entry">
-      <span class="log-ts">${esc((e.ts||'').replace('T',' '))}</span>
-      <span class="log-type ${e.type||''}">${esc((e.type||'?').toUpperCase())}</span>
-      <span class="log-action">${esc(e.action||'')}</span>
-      <span class="log-detail">${esc(e.detail||'')}</span>
-    </div>`).join('')
+  document.getElementById('log-area').innerHTML=[...entries].reverse().map(e=>{
+    const t=e.type||''
+    const cls=t==='claude'?'log-claude':t==='deep'?'log-deep':''
+    const time=(e.ts||'').substring(11,19)
+    const detail=e.detail?` · ${esc(e.detail)}`:'';
+    return `<div class="log-entry ${cls}">
+      <span class="log-ts">${time}</span>
+      <span class="log-type ${t}">${(t||'?').toUpperCase()}</span>
+      <span class="log-detail">${esc(e.action||'')}${detail}</span>
+    </div>`
+  }).join('')
 }
 
 // ── DUAL ──
@@ -947,6 +969,7 @@ async function pollFps(){
   try{
     const d=await fetch('/api/fpsbox').then(r=>r.json())
     const fps=d.fps??0
+    _lastFpsForChart=fps
     _gearRunning=!!d.running
     // fps-box in left col
     const el=document.getElementById('fps-val')
@@ -970,6 +993,38 @@ async function pollFps(){
 }
 setInterval(pollFps,1000)
 pollFps()
+
+// ── FPS CHART ──
+let _fpsHistory=[], _lastFpsForChart=0
+function drawFpsChart(){
+  const canvas=document.getElementById('fps-chart')
+  if(!canvas) return
+  const w=canvas.offsetWidth, h=canvas.offsetHeight
+  if(!w||!h) return
+  canvas.width=w; canvas.height=h
+  const ctx=canvas.getContext('2d')
+  ctx.clearRect(0,0,w,h)
+  if(_fpsHistory.length<2) return
+  const max=Math.max(..._fpsHistory,10)
+  const step=w/(_fpsHistory.length-1)
+  ctx.beginPath()
+  ctx.strokeStyle='#44bb77'
+  ctx.lineWidth=1.5
+  _fpsHistory.forEach((v,i)=>{
+    const x=i*step, y=h-(v/max)*(h*0.88)-4
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)
+  })
+  ctx.stroke()
+  ctx.lineTo((_fpsHistory.length-1)*step,h);ctx.lineTo(0,h);ctx.closePath()
+  ctx.fillStyle='rgba(68,187,119,0.10)';ctx.fill()
+  const last=_fpsHistory[_fpsHistory.length-1]
+  ctx.fillStyle='#44bb77';ctx.font='8px monospace';ctx.fillText(last+'fps',3,h-2)
+}
+setInterval(()=>{
+  _fpsHistory.push(_lastFpsForChart)
+  if(_fpsHistory.length>60) _fpsHistory.shift()
+  drawFpsChart()
+},2000)
 
 async function gearPlay(){
   await fetch('/api/fpsbox/start',{method:'POST'})
