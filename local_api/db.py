@@ -89,7 +89,8 @@ def session_get(sid):
                 SUM(status='error')             error,
                 SUM(status='cancelled')         cancelled,
                 SUM(worker_deep='running')      deep_running,
-                SUM(worker_claude='running')    claude_running
+                SUM(worker_claude='running')    claude_running,
+                SUM(worker_deep='done')         deep_done
             FROM tasks WHERE session_id=?
         """, (sid,)).fetchone()
         d['stats'] = dict(s) if s else {}

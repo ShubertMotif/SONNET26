@@ -487,7 +487,7 @@ function renderSessions(sessions){
   }
   list.innerHTML=sessions.slice(0,8).map(s=>{
     const st=s.stats||{}
-    const done=st.done||0, total=st.total||0, running=st.running||0
+    const deepDone=st.deep_done||0, total=st.total||0, running=st.running||0, done=st.done||0
     const col=running>0?'var(--orange)':done>=total&&total>0?'var(--green)':'var(--muted)'
     const badge=running>0
       ?`<span class="s-tag" style="color:var(--orange);background:#1a0f00">RUN</span>`
@@ -496,7 +496,7 @@ function renderSessions(sessions){
         :`<span class="s-tag" style="color:var(--muted);background:var(--bg3)">WAIT</span>`
     return `<div class="session-item">
       <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.id)}">${esc(s.label)}</span>
-      <span style="color:${col};font-variant-numeric:tabular-nums">${done}/${total}</span>
+      <span style="color:${col};font-variant-numeric:tabular-nums">${deepDone}/${total}</span>
       ${badge}
     </div>`
   }).join('')
