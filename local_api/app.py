@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import subprocess, os, json, requests, time, datetime
 
 import coda as coda_module
+import db as db_module
 import scheduler as sched_module
 import report as report_module
 import fps_monitor as fps_module
@@ -39,12 +40,15 @@ def _log_prime():
 
 # ── Stato DS persistente ─────────────────────────────────────
 _ds_on = False
+_current_topic = None
 
 def _load_state():
-    global _ds_on
+    global _ds_on, _current_topic
     try:
         with open(STATE_FILE) as f:
-            _ds_on = json.load(f).get("ds_on", False)
+            s = json.load(f)
+            _ds_on = s.get("ds_on", False)
+            _current_topic = s.get("current_topic", None)
     except Exception:
         pass
 
@@ -52,7 +56,7 @@ def _save_state():
     try:
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         with open(STATE_FILE, "w") as f:
-            json.dump({"ds_on": _ds_on}, f)
+            json.dump({"ds_on": _ds_on, "current_topic": _current_topic}, f)
     except Exception:
         pass
 
@@ -213,10 +217,68 @@ def dashboard():
         "dual":      dual[-10:],
         "scheduler": sched,
         "ds":        {"on": _ds_on},
+        "topic":     _current_topic,
         "gpu_fps":   next((t["toks_s"] for t in reversed(dual) if t.get("toks_s")), None),
         "output":    output_files(),
         "filetree":  _get_filetree(),
+        "sessions":  coda_module.session_list(),
     })
+
+# ── Topic ────────────────────────────────────────────────────
+@app.route("/api/topic", methods=["GET"])
+def topic_get():
+    return jsonify(_current_topic or {})
+
+@app.route("/api/topic/start", methods=["POST"])
+def topic_start():
+    global _current_topic
+    data  = request.json or {}
+    key   = data.get("key", "").strip().replace(" ", "_") or f"topic_{int(time.time())}"
+    label = data.get("label", key).strip()
+
+    import re
+    slug = re.sub(r'[^\w]+', '_', key.lower())[:40].strip('_')
+    ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_claude = f"{slug}_{ts}_claude.html"
+    file_deep   = f"{slug}_{ts}_deepsonnet26.html"
+    path_claude = os.path.join(DIR_CLAUDE, file_claude)
+    path_deep   = os.path.join(DIR_DEEP,   file_deep)
+
+    stub = f"""<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
+<title>{label}</title>
+<link rel="stylesheet" href="/static/report.css" onerror="this.remove()">
+<style>body{{background:#0a0a12;color:#c8c8d8;font-family:monospace;padding:20px}}
+section{{border:1px solid #1e1e2e;border-radius:4px;padding:12px;margin:10px 0}}
+.card{{background:#0e0e1e}}.box-info{{border-color:#3b82f6}}.box-ok{{border-color:#22c55e}}
+.box-warn{{border-color:#f59e0b}}h1{{color:#7c3aed;margin-bottom:4px}}
+.meta{{font-size:10px;color:#555;margin-bottom:16px}}</style></head>
+<body><h1>⬡ {label}</h1>
+<div class="meta">Avviato: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} — sessione attiva</div>
+</body></html>"""
+
+    os.makedirs(DIR_CLAUDE, exist_ok=True)
+    os.makedirs(DIR_DEEP,   exist_ok=True)
+    with open(path_claude, "w", encoding="utf-8") as f: f.write(stub.replace("⬡", "C ⬡"))
+    with open(path_deep,   "w", encoding="utf-8") as f: f.write(stub.replace("⬡", "D ⬡"))
+
+    _current_topic = {
+        "key": key, "label": label,
+        "file_claude": file_claude, "path_claude": path_claude,
+        "file_deep":   file_deep,   "path_deep":   path_deep,
+        "started": now_str(),
+    }
+    _save_state()
+    log_append("system", "topic_start", f"◈ TOPIC: {label}")
+    return jsonify({"ok": True, "topic": _current_topic})
+
+@app.route("/api/topic/stop", methods=["POST"])
+def topic_stop():
+    global _current_topic
+    label = (_current_topic or {}).get("label", "—")
+    _current_topic = None
+    _save_state()
+    log_append("system", "topic_stop", f"◈ TOPIC chiuso: {label}")
+    return jsonify({"ok": True})
 
 # ── DS toggle ────────────────────────────────────────────────
 @app.route("/api/ds", methods=["GET"])
@@ -242,19 +304,20 @@ def task_add():
     if not payload:
         return jsonify({"error": "payload mancante"}), 400
 
-    # "prompt" / "AI" → dual task: Deep genera HTML subito, Claude lato pending
+    # "prompt" / "AI" → append se topic attivo, altrimenti nuovo dual
     if type_ == "prompt":
-        task = coda_module.add_dual(
-            label=label,
-            brief=payload,
-            output_claude="",
-            file_claude="",          # auto-generato da _slugify(label)
-            write_claude=False,
-            autostart=True,          # DeepSonnet26 parte immediatamente
-            worker_claude_init="pending",
-        )
-        log_append("claude", "dual_input", f"[AI→dual] {payload[:60]}")
-        log_append("deep",   label,        f"→ auto: {task['file_deep']}")
+        if _current_topic:
+            section_claude = data.get("section_claude", "")
+            task = coda_module.add_topic_task(payload, label, _current_topic, section_claude)
+            log_append("system", "topic_task", f"◈ [{_current_topic['key']}] {payload[:60]}")
+        else:
+            task = coda_module.add_dual(
+                label=label, brief=payload, output_claude="",
+                file_claude="", write_claude=False,
+                autostart=True, worker_claude_init="pending",
+            )
+            log_append("claude", "dual_input", f"[AI→dual] {payload[:60]}")
+            log_append("deep",   label,        f"→ auto: {task['file_deep']}")
         return jsonify({"task": task, "ds_task": None, "ds_on": _ds_on})
 
     task = coda_module.add(type_, payload, label)
@@ -485,10 +548,72 @@ def api_fpsbox_stop():
     fps_module.stop()
     return jsonify({"ok": True})
 
+# ── Sessions ─────────────────────────────────────────────────
+@app.route("/api/session/start_dual", methods=["POST"])
+def session_start_dual():
+    data  = request.json or {}
+    label = data.get("label", "").strip()
+    sid   = data.get("key",   "").strip() or None
+    brief = data.get("brief", label).strip()
+    if not label:
+        return jsonify({"error": "label mancante"}), 400
+    session = coda_module.session_create(label, sid)
+    tasks   = coda_module.session_add_tasks(session["id"], [{"label": label, "brief": brief}])
+    log_append("system", "session_create",    f"◈ SESSION DUAL: {session['label']} [{session['id']}]")
+    log_append("system", "session_add_tasks", f"◈ [{session['id']}] +1 task dual avviato")
+    return jsonify({"session": session, "tasks": tasks})
+
+@app.route("/api/session/create", methods=["POST"])
+def session_create():
+    data  = request.json or {}
+    label = data.get("label", "").strip()
+    sid   = data.get("key",   "").strip() or None
+    if not label:
+        return jsonify({"error": "label mancante"}), 400
+    session = coda_module.session_create(label, sid)
+    log_append("system", "session_create", f"◈ SESSION: {session['label']} [{session['id']}]")
+    return jsonify(session)
+
+@app.route("/api/session/add_tasks", methods=["POST"])
+def session_add_tasks():
+    data       = request.json or {}
+    session_id = data.get("session_id", "").strip()
+    tasks_in   = data.get("tasks", [])
+    if not session_id or not tasks_in:
+        return jsonify({"error": "session_id e tasks obbligatori"}), 400
+    if not db_module.session_get(session_id):
+        return jsonify({"error": f"sessione '{session_id}' non trovata"}), 404
+    tasks = coda_module.session_add_tasks(session_id, tasks_in)
+    log_append("system", "session_add_tasks",
+               f"◈ [{session_id}] +{len(tasks)} task in coda")
+    return jsonify({"session_id": session_id, "added": len(tasks), "tasks": tasks})
+
+@app.route("/api/session/list")
+def session_list():
+    return jsonify(coda_module.session_list())
+
+@app.route("/api/session/<sid>")
+def session_get(sid):
+    s = coda_module.session_get(sid)
+    if not s: return jsonify({"error": "non trovata"}), 404
+    s["tasks"] = coda_module.task_list(session_id=sid)
+    return jsonify(s)
+
+@app.route("/api/session/<sid>/tasks")
+def session_tasks(sid):
+    status = request.args.get("status")
+    return jsonify(coda_module.task_list(session_id=sid, status=status))
+
+@app.route("/api/session/<sid>/cancel", methods=["POST"])
+def session_cancel(sid):
+    coda_module.session_cancel(sid)
+    log_append("system", "session_cancel", f"◈ [{sid}] cancellata")
+    return jsonify({"ok": True})
+
 # ── Status ───────────────────────────────────────────────────
 @app.route("/api/status")
 def api_status():
-    return jsonify({"status": "online", "service": "SONNET26-LocalAPI", "version": "2.0"})
+    return jsonify({"status": "online", "service": "SONNET26-LocalAPI", "version": "3.0"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5052, debug=False)

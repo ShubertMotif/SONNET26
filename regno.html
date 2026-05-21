@@ -80,6 +80,12 @@ header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16p
 .log-action{color:#3a3a5a;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .log-detail{color:#777;font-size:10px;line-height:1.4;word-break:break-word}
 
+/* SESSIONS */
+.sessions-strip{border-top:1px solid var(--border);flex-shrink:0}
+.session-item{display:grid;grid-template-columns:1fr auto auto;gap:6px;padding:3px 14px;border-bottom:1px solid var(--border2);align-items:center;font-size:9px;cursor:default}
+.session-item:hover{background:var(--bg2)}
+.s-tag{padding:1px 5px;border-radius:2px;font-size:8px;font-weight:bold;letter-spacing:1px}
+
 /* CODA */
 .coda-area{border-top:1px solid var(--border);flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
 .coda-area .panel-hdr{position:sticky;top:0;z-index:1}
@@ -228,6 +234,23 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
   <span class="svc-sep">|</span>
   <span class="svc-sep">|</span>
   <span style="font-size:10px;color:var(--muted)" id="coda-mini">CODA —</span>
+  <span class="svc-sep">|</span>
+  <span id="topic-strip" style="display:flex;align-items:center;gap:6px">
+    <span id="topic-label" style="font-size:10px;color:var(--dim)">◈ no topic</span>
+    <button id="topic-start-btn" onclick="topicStartUI()" style="font-size:9px;padding:1px 7px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);border-radius:2px;cursor:pointer;font-family:monospace">+ TOPIC</button>
+    <button id="topic-stop-btn" onclick="topicStop()" style="display:none;font-size:9px;padding:1px 7px;background:#1a0a0a;border:1px solid #5a1a1a;color:#f87171;border-radius:2px;cursor:pointer;font-family:monospace">■ STOP</button>
+  </span>
+</div>
+
+<!-- TOPIC INPUT POPUP -->
+<div id="topic-popup" style="display:none;position:fixed;top:74px;right:14px;z-index:920;background:var(--bg2);border:1px solid var(--purple);border-radius:5px;padding:12px 14px;min-width:280px;box-shadow:0 4px 20px rgba(0,0,0,.6)">
+  <div style="font-size:10px;color:var(--purple);margin-bottom:8px;letter-spacing:1px">◈ NUOVO TOPIC</div>
+  <input id="topic-key-input" placeholder="chiave (es: sito_adelchi)" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:3px;font-family:monospace;font-size:10px;box-sizing:border-box;margin-bottom:6px">
+  <input id="topic-label-input" placeholder="label (es: Sito Adelchi - 21 Maggio)" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:3px;font-family:monospace;font-size:10px;box-sizing:border-box;margin-bottom:8px">
+  <div style="display:flex;gap:6px">
+    <button onclick="topicStart()" style="flex:1;background:var(--purple2);border:none;color:#fff;padding:4px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:10px">AVVIA</button>
+    <button onclick="document.getElementById('topic-popup').style.display='none'" style="background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:10px">✗</button>
+  </div>
 </div>
 
 <!-- CONTROLS -->
@@ -275,6 +298,16 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb{background:var(--border)}
           <span style="font-size:8px;color:rgba(255,255,255,.5);letter-spacing:1px">FPS</span>
         </div>
         <div id="fps-dot" style="font-size:7px;color:rgba(255,255,255,.4);letter-spacing:1px">● CUDA</div>
+      </div>
+    </div>
+
+    <div class="sessions-strip" id="sessions-strip">
+      <div class="panel-hdr">
+        <span class="panel-title">SESSIONI</span>
+        <span class="panel-meta" id="sessions-count"></span>
+      </div>
+      <div id="sessions-list" style="max-height:74px;overflow-y:auto">
+        <div style="color:var(--dim);padding:4px 14px;font-size:9px">nessuna sessione</div>
       </div>
     </div>
 
@@ -393,7 +426,8 @@ function renderCoda(coda){
   // Espandi dual task in DUE righe: prima ⬡C poi ◈D
   const rows=[]
   for(const t of [...tasks].reverse()){
-    if(t.type==='dual'){
+    const isDual = t.type==='dual' || (t.worker_deep!=null && t.worker_claude!=null)
+    if(isDual){
       rows.push({...t, _row:'claude'})
       rows.push({...t, _row:'deep'})
     } else {
@@ -441,7 +475,7 @@ function renderCoda(coda){
     const rowCls=`coda-item${sel?' selected':''}${isStandby?' standby-row':''}`
     return `<div class="${rowCls}" data-task-id="${esc(t.id)}" data-task-status="${esc(t.status)}" data-idx="${i}">
       <span class="coda-id">#${esc(t.id)}</span>
-      <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc(t.type.toUpperCase())}</span>
+      <span class="coda-type" style="color:${typeColor[t.type]||'#888'};border-color:${typeColor[t.type]||'#333'}">${esc((t.type||'task').toUpperCase())}</span>
       <span class="coda-label">${esc(t.label||t.payload)}</span>
       <span class="coda-model" style="color:var(--dim)">—</span>
       <span class="coda-status" style="color:${stCol};font-size:10px;text-align:right">${dot}${taskIcon[t.status]||'?'} ${t.status}</span>
@@ -454,6 +488,34 @@ function renderCoda(coda){
       _seen.add(k);toast(t.label||'',t.status,t.status==='done'?'✓':'✗')
     }
   })
+}
+
+// ── SESSIONS ──
+function renderSessions(sessions){
+  if(!sessions) return
+  const list=document.getElementById('sessions-list')
+  const cnt =document.getElementById('sessions-count')
+  const active=sessions.filter(s=>s.status==='active')
+  cnt.textContent=`${sessions.length} · ${active.length} attive`
+  if(!sessions.length){
+    list.innerHTML='<div style="color:var(--dim);padding:4px 14px;font-size:9px">nessuna sessione</div>'
+    return
+  }
+  list.innerHTML=sessions.slice(0,8).map(s=>{
+    const st=s.stats||{}
+    const done=st.done||0, total=st.total||0, running=st.running||0
+    const col=running>0?'var(--orange)':done>=total&&total>0?'var(--green)':'var(--muted)'
+    const badge=running>0
+      ?`<span class="s-tag" style="color:var(--orange);background:#1a0f00">RUN</span>`
+      :done>=total&&total>0
+        ?`<span class="s-tag" style="color:var(--green);background:#091409">DONE</span>`
+        :`<span class="s-tag" style="color:var(--muted);background:var(--bg3)">WAIT</span>`
+    return `<div class="session-item">
+      <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.id)}">${esc(s.label)}</span>
+      <span style="color:${col};font-variant-numeric:tabular-nums">${done}/${total}</span>
+      ${badge}
+    </div>`
+  }).join('')
 }
 
 // ── DS + SCHED ──
@@ -659,6 +721,21 @@ function _openFileInViewer(filename){
   else toast(`File non ancora disponibile: ${filename}`,'warn','!')
 }
 
+function _previewFileInViewer(filename){
+  const idx=_files.findIndex(f=>f.name===filename)
+  if(idx>=0) showFile(idx)
+  else toast(`File non ancora disponibile: ${filename}`,'warn','!')
+}
+
+function _codaPreviewSel(){
+  if(_codaSelIdx<0||_codaSelIdx>=_codaTasks.length) return
+  const t=_codaTasks[_codaSelIdx]
+  if(t._row==='claude'&&t.worker_claude==='done'&&t.file_claude) _previewFileInViewer(t.file_claude)
+  else if(t._row==='deep'&&t.worker_deep==='done'&&t.file_deep)  _previewFileInViewer(t.file_deep)
+  else if(t.status==='done'&&t.file_claude) _previewFileInViewer(t.file_claude)
+  else toast(`Task non done: ${t.status||'?'}`,'info','·')
+}
+
 async function _codaStartSel(){
   if(_codaSelIdx<0||_codaSelIdx>=_codaTasks.length) return
   const t=_codaTasks[_codaSelIdx]
@@ -744,12 +821,13 @@ function handleKey(e){
   }
   if(_mode===4){
     const ca=document.getElementById('coda-area')
-    if(e.key==='ArrowUp')   _codaMoveSel(-1)
-    if(e.key==='ArrowDown') _codaMoveSel(1)
-    if(e.key==='PageUp')    ca.scrollBy(0,-ca.clientHeight*0.85)
-    if(e.key==='PageDown')  ca.scrollBy(0, ca.clientHeight*0.85)
-    if(e.key==='Enter')     _codaStartSel()
-    if(e.key==='Delete')    _codaCancelSel()
+    if(e.key==='ArrowUp')    _codaMoveSel(-1)
+    if(e.key==='ArrowDown')  _codaMoveSel(1)
+    if(e.key==='ArrowRight') _codaPreviewSel()
+    if(e.key==='PageUp')     ca.scrollBy(0,-ca.clientHeight*0.85)
+    if(e.key==='PageDown')   ca.scrollBy(0, ca.clientHeight*0.85)
+    if(e.key==='Enter')      _codaStartSel()
+    if(e.key==='Delete')     _codaCancelSel()
     return
   }
   if(_mode===6){
@@ -786,6 +864,8 @@ async function mode5(){
     renderDual(data.dual)
     updateFiles(data.output)
     renderGpuBox(data.hw, data.gpu_fps)
+    _updateTopicUI(data.topic)
+    renderSessions(data.sessions)
     // aggiorna badge/interval
     const anyRunning=data.coda.running>0||data.dual.some(t=>t.status==='running')||data.scheduler.running
     const badge=document.getElementById('live-badge')
@@ -931,6 +1011,8 @@ async function refreshAll(){
     renderDual(data.dual)
     updateFiles(data.output)
     renderGpuBox(data.hw, data.gpu_fps)
+    _updateTopicUI(data.topic)
+    renderSessions(data.sessions)
 
     const anyRunning=data.coda.running>0||data.dual.some(t=>t.status==='running')||data.scheduler.running
     const badge=document.getElementById('live-badge')
@@ -944,6 +1026,42 @@ async function refreshAll(){
 
 // ── ACTIONS ──
 async function toggleDS(){await post('/api/ds/toggle');refreshAll()}
+
+// ── TOPIC ──
+function topicStartUI(){
+  document.getElementById('topic-popup').style.display='block'
+  document.getElementById('topic-key-input').focus()
+}
+async function topicStart(){
+  const key=document.getElementById('topic-key-input').value.trim()
+  const label=document.getElementById('topic-label-input').value.trim()
+  if(!key){toast('Inserisci una chiave topic','warn','!');return}
+  document.getElementById('topic-popup').style.display='none'
+  await post('/api/topic/start',{key,label:label||key})
+  toast(`Topic avviato: ${label||key}`,'done','◈')
+  refreshAll()
+}
+async function topicStop(){
+  await post('/api/topic/stop')
+  toast('Topic chiuso','info','◈')
+  refreshAll()
+}
+function _updateTopicUI(topic){
+  const lbl=document.getElementById('topic-label')
+  const startBtn=document.getElementById('topic-start-btn')
+  const stopBtn=document.getElementById('topic-stop-btn')
+  if(topic&&topic.key){
+    lbl.textContent=`◈ ${topic.label||topic.key}`
+    lbl.style.color='var(--purple)'
+    startBtn.style.display='none'
+    stopBtn.style.display=''
+  } else {
+    lbl.textContent='◈ no topic'
+    lbl.style.color='var(--dim)'
+    startBtn.style.display=''
+    stopBtn.style.display='none'
+  }
+}
 async function schedStart(){const i=+document.getElementById('sched-interval').value;await post('/api/scheduler/start',{interval:i});toast('Scheduler avviato — ogni '+i+'s','done','⏱');refreshAll()}
 async function schedStop(){await post('/api/scheduler/stop');toast('Scheduler fermato','info','■');refreshAll()}
 

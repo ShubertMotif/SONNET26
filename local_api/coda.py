@@ -1,528 +1,242 @@
-import threading
-import subprocess
-import uuid
-import json
-import os
-import time
-import datetime
-import requests
+"""
+coda.py — Worker loop SONNET26.
+Claude  → Anthropic API reale  (cloud)
+DeepSonnet26 → Ollama locale   (RTX 3060)
+Persistenza su SQLite via db.py
+"""
+import threading, time, os, json, datetime, requests
+import anthropic
+import db as _db
 import report as _report
+import fps_monitor as _fps
 
-CODA_FILE  = os.path.join(os.path.dirname(__file__), "../data/coda.json")
-_TEMPLATE_FILE = os.path.join(os.path.dirname(__file__), "../templates/report_base.html")
+# ── Identità ─────────────────────────────────────────────────────────────────
+_ID_FILE = os.path.join(os.path.dirname(__file__), "../data/identita.json")
 
-def _load_template():
+def _load_id():
     try:
-        with open(_TEMPLATE_FILE, encoding="utf-8") as f:
-            return f.read()
-    except Exception:
-        return ""
+        with open(_ID_FILE) as f: return json.load(f)
+    except: return {}
 
-_DEEP_SYSTEM = """Sei DeepSonnet26, AI locale su RTX 3060. Generi report HTML completi in italiano.
+_ID = _load_id()
 
-REGOLA FONDAMENTALE: rispondi SOLO con HTML valido, niente testo fuori dal tag <html>.
+def _api_key():
+    kf = (_ID.get("claude") or {}).get("api_key_file", "")
+    if not kf:
+        try:
+            with open(_ID_FILE) as f:
+                data = json.load(f)
+            kf = (data.get("claude") or {}).get("api_key_file", "")
+        except Exception:
+            pass
+    if kf:
+        try:
+            with open(kf) as f: return f.read().strip()
+        except Exception:
+            pass
+    return os.environ.get("ANTHROPIC_API_KEY", "")
 
-USA QUESTO TEMPLATE BASE (CSS già incluso, non riscrivere gli stili):
+CLAUDE_MODEL  = (_ID.get("claude")       or {}).get("modello",   "claude-sonnet-4-6")
+DEEP_ENDPOINT = (_ID.get("deepsonnet26") or {}).get("endpoint",  "http://localhost:11434/api/chat")
+DEEP_MODEL    = (_ID.get("deepsonnet26") or {}).get("modello",   "deepsonnet26")
+DIR_CLAUDE    = (_ID.get("claude")       or {}).get("output_dir","/home/mattia/Scrivania/SONNET26/output_claude")
+DIR_DEEP      = (_ID.get("deepsonnet26") or {}).get("output_dir","/mnt/sda3/SONNET26_DATA/output_deep")
 
-""" + _load_template() + """
+# ── Template CSS per i prompt ─────────────────────────────────────────────────
+_TPL_FILE = os.path.join(os.path.dirname(__file__), "../templates/report_base.html")
 
+def _load_tpl():
+    try:
+        with open(_TPL_FILE, encoding="utf-8") as f: return f.read()
+    except: return ""
+
+_TPL = _load_tpl()
+
+_DEEP_SYSTEM = """Sei DeepSonnet26, AI locale di Adelchi Group SRLS su RTX 3060.
+Generi report HTML completi in italiano. REGOLA: rispondi SOLO con HTML valido.
+
+USA QUESTO TEMPLATE BASE (CSS già incluso):
+""" + _TPL + """
 ISTRUZIONI:
-- Sostituisci {{TITOLO}}, {{CONTENUTO}}, {{MODELLO}} = DeepSonnet26, {{DATA}} con la data odierna
-- Usa i blocchi CSS già definiti: .card, .grid, .tbl, .props, .stat, .box-*, .tag-*, .list, .formula, .timeline, .bar-wrap
-- Scegli i blocchi adatti al contenuto — non usarli tutti, solo quelli che servono
-- Dati accurati, layout a sezioni logiche con h2/h3
-- Output: HTML completo e autosufficiente"""
+- Sostituisci {{TITOLO}}, {{CONTENUTO}}, {{MODELLO}}=DeepSonnet26, {{DATA}}
+- Classi disponibili: .card .grid .tbl .props .stat .box-info .box-ok .box-warn .box-danger .list .formula .bar-wrap .timeline
+- Sezioni logiche h2/h3, dati precisi, layout compatto
+- Aggiungi prospettiva tecnica che Claude non ha (calcoli, alternative, errori corretti)
+- Output: HTML completo autosufficiente"""
 
-_CLAUDE_SYSTEM = """Sei Claude, AI locale. Genera una risposta HTML sintetica e diretta in italiano.
-
-REGOLA FONDAMENTALE: rispondi SOLO con HTML valido, niente testo fuori dal tag <html>.
+_CLAUDE_SYSTEM = """Sei Claude (Anthropic). Generi report HTML enciclopedici in italiano.
+REGOLA: rispondi SOLO con HTML valido, niente testo fuori da <html>.
 
 USA QUESTO TEMPLATE BASE:
-
-""" + _load_template() + """
-
+""" + _TPL + """
 ISTRUZIONI:
-- Risposta concisa — 2-3 sezioni, vai subito al punto
-- Sostituisci {{TITOLO}}, {{CONTENUTO}}, {{MODELLO}} = Claude, {{DATA}} con la data odierna
-- Usa .card, .box-*, .tbl dove serve — niente decorazioni inutili
+- Sostituisci {{TITOLO}}, {{CONTENUTO}}, {{MODELLO}}=Claude, {{DATA}}
+- Sezioni: definizione → principi → storia → applicazioni → stato ricerca attuale
+- Dati precisi, fonti citate, layout con .card .tbl .box-info .list .formula
 - Output: HTML completo autosufficiente"""
-DIR_CLAUDE = "/home/mattia/Scrivania/SONNET26/output_claude"
-DIR_DEEP   = "/mnt/sda3/SONNET26_DATA/output_deep"
 
-_lock = threading.Lock()
-_worker_thread = None
-
+# ── Helpers paths ─────────────────────────────────────────────────────────────
 
 def _slugify(text):
     import re
-    text = re.sub(r'[^\w\s-]', '', text.lower().strip())
-    text = re.sub(r'[\s_-]+', '_', text)
-    return text[:40].strip('_') or "task"
+    return re.sub(r'[^\w]+', '_', text.lower().strip())[:40].strip('_') or 'task'
 
+def _make_paths(label):
+    ts   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    slug = _slugify(label)
+    fc   = f"{slug}_{ts}_claude.html"
+    fd   = f"{slug}_{ts}_deepsonnet26.html"
+    return fc, fd, os.path.join(DIR_CLAUDE, fc), os.path.join(DIR_DEEP, fd)
 
-def _load():
-    os.makedirs(os.path.dirname(CODA_FILE), exist_ok=True)
-    if not os.path.exists(CODA_FILE):
-        return []
-    try:
-        with open(CODA_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return []
+# ── Public API ────────────────────────────────────────────────────────────────
 
+def session_create(label, sid=None):
+    """Crea (o recupera) una sessione di lavoro."""
+    return _db.session_create(label, sid)
 
-def _save(tasks):
-    os.makedirs(os.path.dirname(CODA_FILE), exist_ok=True)
-    with open(CODA_FILE, "w") as f:
-        json.dump(tasks, f, indent=2, ensure_ascii=False)
-
-
-def _now():
-    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def add(task_type, payload, label=""):
-    """Aggiunge un task standard alla coda."""
-    task = {
-        "id": str(uuid.uuid4())[:8],
-        "type": task_type,
-        "payload": payload,
-        "label": label or payload[:60],
-        "status": "pending",
-        "created": _now(),
-        "started": None,
-        "finished": None,
-        "output": "",
-    }
-    with _lock:
-        tasks = _load()
-        tasks.append(task)
-        _save(tasks)
-    _ensure_worker()
-    return task
-
-
-def add_dual(label, brief, output_claude, file_claude, write_claude=True, autostart=True, worker_claude_init="done"):
+def session_add_tasks(session_id, tasks):
     """
-    Task dual: Claude ha già completato la sua parte,
-    DeepSonnet26 viene accodato per lavorare sullo stesso brief.
-    write_claude=False se il file è già stato salvato dal chiamante.
-    autostart=False: il task resta in standby finché non viene avviato manualmente.
+    Aggiunge lista di task a una sessione.
+    tasks = [{"label": "...", "brief": "..."}, ...]
+    Restituisce lista task creati.
     """
-    if not file_claude:
-        file_claude = _slugify(label or brief[:40]) + "_claude.html"
-    path_claude = os.path.join(DIR_CLAUDE, file_claude)
-
-    # Genera placeholder Claude subito quando il task è in pending
-    if worker_claude_init == "pending" and not output_claude:
-        title = label or file_claude.replace("_claude.html", "").replace("_", " ").title()
-        output_claude = _report.make(
-            title,
-            [
-                _report.box(f"<strong>Brief:</strong> {brief[:800]}", "info"),
-                _report.box("DeepSonnet26 in elaborazione — risposta Claude non ancora disponibile.", "note"),
-            ],
-            model="Claude (pending)"
-        )
-        write_claude = True
-
-    if write_claude and output_claude:
-        os.makedirs(DIR_CLAUDE, exist_ok=True)
-        with open(path_claude, "w", encoding="utf-8") as f:
-            f.write(output_claude)
-
-    base = os.path.splitext(file_claude)[0]
-    ext  = os.path.splitext(file_claude)[1] or ".txt"
-    base_clean = base[:-7] if base.endswith("_claude") else base
-    file_deep = base_clean + "_deepsonnet26" + ext
-    path_deep = os.path.join(DIR_DEEP, file_deep)
-
-    deep_worker = "pending" if autostart else "standby"
-    task = {
-        "id": str(uuid.uuid4())[:8],
-        "type": "dual",
-        "payload": brief,
-        "label": label or brief[:60],
-        "status": "running" if autostart else "standby",
-        "created": _now(),
-        "started": _now() if autostart else None,
-        "finished": None,
-        "output": "",
-        "worker_claude": worker_claude_init,
-        "output_claude": output_claude[:2000],
-        "file_claude": file_claude,
-        "path_claude": path_claude,
-        "worker_deep": deep_worker,
-        "output_deep": "",
-        "file_deep": file_deep,
-        "path_deep": path_deep,
-        "started_deep": None,
-        "finished_deep": None,
-    }
-    with _lock:
-        tasks = _load()
-        tasks.append(task)
-        _save(tasks)
-    if autostart:
-        _ensure_worker()
-    return task
-
-
-def start_task(task_id):
-    """Avvia un task in standby: worker_deep standby → pending."""
-    with _lock:
-        tasks = _load()
-        for t in tasks:
-            if t["id"] == task_id and t.get("worker_deep") == "standby":
-                t["worker_deep"] = "pending"
-                t["status"] = "running"
-                t["started"] = _now()
-        _save(tasks)
+    created = []
+    for i, t in enumerate(tasks):
+        label = t.get("label", f"task_{i+1}")
+        brief = t.get("brief", label)
+        fc, fd, pc, pd = _make_paths(label)
+        task = _db.task_add(session_id, label, brief, pc, pd, fc, fd, priority=i)
+        created.append(task)
     _ensure_worker()
+    return created
 
+def task_get(tid):
+    return _db.task_get(tid)
 
-def list_tasks(status_filter=None):
-    with _lock:
-        tasks = _load()
-    if status_filter:
-        tasks = [t for t in tasks if t["status"] == status_filter]
-    return tasks
+def task_list(session_id=None, status=None):
+    return _db.task_list(session_id=session_id, status=status)
 
+list_tasks = task_list  # alias usato da app.py dashboard
 
-def get(task_id):
-    with _lock:
-        tasks = _load()
-    return next((t for t in tasks if t["id"] == task_id), None)
+def session_get(sid):
+    return _db.session_get(sid)
 
+def session_list():
+    return _db.session_list()
 
-def cancel(task_id):
-    with _lock:
-        tasks = _load()
-        for t in tasks:
-            if t["id"] == task_id and t["status"] in ("pending", "running", "standby"):
-                t["status"] = "cancelled"
-                t["finished"] = _now()
-                if t["type"] == "dual":
-                    t["worker_deep"] = "cancelled"
-                    t["finished_deep"] = _now()
-        _save(tasks)
+def task_cancel(tid):
+    _db.task_cancel(tid)
 
+def session_cancel(sid):
+    _db.task_cancel_session(sid)
 
-def clear_done():
-    with _lock:
-        tasks = _load()
-        tasks = [t for t in tasks if t["status"] in ("pending", "running")]
-        _save(tasks)
+def clear_done(session_id=None):
+    _db.task_clear_done(session_id)
 
+# ── Worker: DeepSonnet26 (Ollama / RTX 3060) ─────────────────────────────────
 
-def _update_standard(task_id, status, output=None, finished=False):
-    with _lock:
-        tasks = _load()
-        for t in tasks:
-            if t["id"] == task_id:
-                t["status"] = status
-                if output is not None:
-                    t["output"] = output
-                if finished:
-                    t["finished"] = _now()
-                elif status == "running":
-                    t["started"] = _now()
-        _save(tasks)
-
-
-def _save_std_html(task, out, status):
-    """Genera e salva un HTML di risultato per task standard."""
-    try:
-        label  = task.get("label") or task.get("payload","task")[:50]
-        typ    = task.get("type","task")
-        ok     = status == "done"
-        slug   = _slugify(f"{label}_{task['id']}")
-        path   = os.path.join(DIR_CLAUDE, slug + "_claude.html")
-        color  = "ok" if ok else "danger"
-        badge  = "✓ completato" if ok else "✗ errore"
-        html   = _report.make(
-            label,
-            [
-                _report.stat_row([
-                    (badge, "stato"),
-                    (typ,   "tipo"),
-                    (task.get("id",""), "id"),
-                ], colors=["var(--green)" if ok else "var(--red)", "var(--accent)", "var(--muted)"]),
-                _report.h2("Payload"),
-                _report.code(task.get("payload", "")),
-                _report.h2("Output"),
-                _report.box(out[:4000], color),
-            ],
-            model="Claude"
-        )
-        os.makedirs(DIR_CLAUDE, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(html)
-        # Aggiorna il task con il percorso del file
-        with _lock:
-            tasks = _load()
-            for t in tasks:
-                if t["id"] == task["id"]:
-                    t["file_claude"] = os.path.basename(path)
-                    t["path_claude"] = path
-            _save(tasks)
-    except Exception:
-        pass
-
-
-def _run_standard(task):
-    _update_standard(task["id"], "running")
-    try:
-        if task["type"] == "shell":
-            result = subprocess.run(
-                task["payload"], shell=True, capture_output=True,
-                text=True, timeout=60, cwd="/home/mattia"
-            )
-            out    = (result.stdout + result.stderr).strip() or "(nessun output)"
-            status = "done" if result.returncode == 0 else "error"
-            _update_standard(task["id"], status, out, finished=True)
-            _save_std_html(task, out, status)
-
-        elif task["type"] == "python":
-            result = subprocess.run(
-                ["python3", "-c", task["payload"]],
-                capture_output=True, text=True, timeout=60, cwd="/home/mattia"
-            )
-            out    = (result.stdout + result.stderr).strip() or "(nessun output)"
-            status = "done" if result.returncode == 0 else "error"
-            _update_standard(task["id"], status, out, finished=True)
-            _save_std_html(task, out, status)
-
-        elif task["type"] == "prompt":
-            try:
-                r = requests.post(
-                    "http://localhost:5051/api/chat",
-                    json={"prompt": task["payload"]},
-                    timeout=120
-                )
-                resp = r.json()
-                out  = resp.get("response", resp.get("reply", resp.get("message", str(resp))))
-                _update_standard(task["id"], "done", out, finished=True)
-                _save_std_html(task, out, "done")
-            except Exception as e:
-                _update_standard(task["id"], "error", str(e), finished=True)
-                _save_std_html(task, str(e), "error")
-
-        elif task["type"] == "note":
-            _update_standard(task["id"], "done", task["payload"], finished=True)
-            _save_std_html(task, task["payload"], "done")
-
-        else:
-            out = f"tipo sconosciuto: {task['type']}"
-            _update_standard(task["id"], "error", out, finished=True)
-            _save_std_html(task, out, "error")
-
-    except subprocess.TimeoutExpired:
-        _update_standard(task["id"], "error", "[timeout 60s]", finished=True)
-        _save_std_html(task, "[timeout 60s]", "error")
-    except Exception as e:
-        _update_standard(task["id"], "error", str(e), finished=True)
-        _save_std_html(task, str(e), "error")
-
-
-def _update_dual_deep(task_id, worker_status, output_deep=None, done=False):
-    completed_label = None
-    completed_file  = None
-    completed_ok    = False
-    with _lock:
-        tasks = _load()
-        for t in tasks:
-            if t["id"] == task_id:
-                t["worker_deep"] = worker_status
-                if output_deep is not None:
-                    t["output_deep"] = output_deep
-                if worker_status == "running" and not t.get("started_deep"):
-                    t["started_deep"] = _now()
-                if done:
-                    t["finished_deep"] = _now()
-                    t["finished"] = _now()
-                    t["status"] = "done" if worker_status == "done" else "error"
-                    completed_label = t.get("label", "")
-                    completed_file  = t.get("file_deep", "")
-                    completed_ok    = (worker_status == "done")
-        _save(tasks)
-    if done and completed_label is not None:
-        icon = "✓" if completed_ok else "✗"
-        try:
-            requests.post("http://localhost:5052/api/log/add", json={
-                "type": "deep", "action": completed_label,
-                "detail": f"{icon} {completed_file}"
-            }, timeout=2)
-        except Exception:
-            pass
-
-
-def _run_dual_deep(task):
-    _update_dual_deep(task["id"], "running")
+def _run_deep(task):
+    _fps.set_deep_active(True)
+    _db.task_set_deep(task["id"], "running")
     try:
         r = requests.post(
-            "http://localhost:11434/api/chat",
+            DEEP_ENDPOINT,
             json={
-                "model": "deepsonnet26",
+                "model": DEEP_MODEL,
                 "messages": [
                     {"role": "system", "content": _DEEP_SYSTEM},
-                    {"role": "user", "content": task["payload"]},
+                    {"role": "user",   "content": task["brief"]},
                 ],
                 "stream": True,
             },
-            stream=True,
-            timeout=300,
+            stream=True, timeout=300,
         )
-
         accumulated = ""
-        last_flush = 0
-        tok_count = 0
-        t_start = time.time()
-        os.makedirs(DIR_DEEP, exist_ok=True)
+        tok_count   = 0
+        t_start     = time.time()
 
         for line in r.iter_lines():
-            if not line:
-                continue
+            if not line: continue
             try:
                 chunk = json.loads(line)
-                token = chunk.get("message", {}).get("content", "")
-                if token:
-                    accumulated += token
-                    tok_count += 1
-                if len(accumulated) - last_flush >= 300:
-                    _update_dual_deep(task["id"], "running", accumulated[:2000])
-                    last_flush = len(accumulated)
-                if chunk.get("done"):
-                    break
-            except Exception:
-                continue
+                tok   = chunk.get("message", {}).get("content", "")
+                if tok:
+                    accumulated += tok
+                    tok_count   += 1
+                if chunk.get("done"): break
+            except Exception: continue
 
         elapsed = time.time() - t_start
-        toks_s = round(tok_count / elapsed, 1) if elapsed > 0 else 0
+        toks_s  = round(tok_count / elapsed, 1) if elapsed > 0 else 0
 
-        cleaned = _report.fix_output(
-            accumulated,
-            fallback_title=task.get("label", "Report"),
-            fallback_model="DeepSonnet26",
-        )
+        cleaned = _report.fix_output(accumulated,
+                                     fallback_title=task["label"],
+                                     fallback_model="DeepSonnet26")
+        os.makedirs(DIR_DEEP, exist_ok=True)
         with open(task["path_deep"], "w", encoding="utf-8") as f:
             f.write(cleaned)
 
-        # Salva tok/s nel task
-        with _lock:
-            tasks = _load()
-            for t in tasks:
-                if t["id"] == task["id"]:
-                    t["toks_s"] = toks_s
-            _save(tasks)
+        _db.task_set_deep(task["id"], "done",
+                          output=accumulated[:3000], toks_s=toks_s)
+        _log_api("deep", task["label"], f"✓ {task['file_deep']} ({toks_s} tok/s)")
 
-        _update_dual_deep(task["id"], "done", accumulated[:2000], done=True)
     except Exception as e:
-        _update_dual_deep(task["id"], "error", str(e), done=True)
+        _db.task_set_deep(task["id"], "error", output=str(e))
+        _log_api("deep", task["label"], f"✗ {str(e)[:80]}")
+    finally:
+        _fps.set_deep_active(False)
 
+# ── Worker: Claude (Anthropic API reale) ──────────────────────────────────────
 
-def _update_dual_claude(task_id, worker_status, output_claude=None):
-    with _lock:
-        tasks = _load()
-        for t in tasks:
-            if t["id"] == task_id:
-                t["worker_claude"] = worker_status
-                if output_claude is not None:
-                    t["output_claude"] = output_claude[:2000]
-                if worker_status == "running" and not t.get("started_claude"):
-                    t["started_claude"] = _now()
-                if worker_status in ("done", "error"):
-                    t["finished_claude"] = _now()
-        _save(tasks)
-
-
-def _run_dual_claude(task):
-    _update_dual_claude(task["id"], "running")
+def _run_claude(task):
+    _db.task_set_claude(task["id"], "running")
     try:
-        r = requests.post(
-            "http://localhost:11434/api/chat",
-            json={
-                "model": "deepsonnet26",
-                "messages": [
-                    {"role": "system", "content": _CLAUDE_SYSTEM},
-                    {"role": "user", "content": task["payload"]},
-                ],
-                "stream": True,
-                "options": {"num_predict": 1200},
-            },
-            stream=True,
-            timeout=180,
-        )
+        client = anthropic.Anthropic(api_key=_api_key())
         accumulated = ""
-        for line in r.iter_lines():
-            if not line:
-                continue
-            try:
-                chunk = json.loads(line)
-                token = chunk.get("message", {}).get("content", "")
-                if token:
-                    accumulated += token
-                if chunk.get("done"):
-                    break
-            except Exception:
-                continue
+        with client.messages.stream(
+            model=CLAUDE_MODEL,
+            max_tokens=4096,
+            system=_CLAUDE_SYSTEM,
+            messages=[{"role": "user", "content": task["brief"]}],
+        ) as stream:
+            for text in stream.text_stream:
+                accumulated += text
 
-        cleaned = _report.fix_output(
-            accumulated,
-            fallback_title=task.get("label", "Report"),
-            fallback_model="Claude",
-        )
+        cleaned = _report.fix_output(accumulated,
+                                     fallback_title=task["label"],
+                                     fallback_model="Claude")
         os.makedirs(DIR_CLAUDE, exist_ok=True)
         with open(task["path_claude"], "w", encoding="utf-8") as f:
             f.write(cleaned)
 
-        _update_dual_claude(task["id"], "done", accumulated[:2000])
-    except Exception as e:
-        _update_dual_claude(task["id"], "error", str(e))
+        _db.task_set_claude(task["id"], "done", output=accumulated[:3000])
+        _log_api("claude", task["label"], f"✓ {task['file_claude']}")
 
+    except Exception as e:
+        _db.task_set_claude(task["id"], "error", output=str(e))
+        _log_api("claude", task["label"], f"✗ {str(e)[:80]}")
+
+# ── Worker loop ───────────────────────────────────────────────────────────────
 
 def _worker_loop():
     while True:
-        task_to_run = None
-        run_as = None
-        with _lock:
-            tasks = _load()
-            # 1. task standard
-            for t in tasks:
-                if t["status"] == "pending" and t["type"] != "dual":
-                    task_to_run = t
-                    run_as = "standard"
-                    break
-            # 2. worker deep
-            if not task_to_run:
-                for t in tasks:
-                    if t["type"] == "dual" and t.get("worker_deep") == "pending":
-                        task_to_run = t
-                        run_as = "deep"
-                        break
-            # 3. worker claude (solo se Ollama non è già occupato con deep)
-            if not task_to_run:
-                deep_running = any(
-                    t["type"] == "dual" and t.get("worker_deep") == "running"
-                    for t in tasks
-                )
-                if not deep_running:
-                    for t in tasks:
-                        if t["type"] == "dual" and t.get("worker_claude") == "pending":
-                            task_to_run = t
-                            run_as = "claude"
-                            break
+        # Priorità 1: deep (RTX) — uno alla volta
+        if not _db.task_deep_running():
+            task = _db.task_next_deep()
+            if task:
+                _run_deep(task)
+                continue
 
-        if task_to_run:
-            if run_as == "deep":
-                _run_dual_deep(task_to_run)
-            elif run_as == "claude":
-                _run_dual_claude(task_to_run)
-            else:
-                _run_standard(task_to_run)
-        else:
-            time.sleep(2)
+        # Priorità 2: claude — parte appena il suo deep è done
+        # (può girare mentre un altro task ha deep running)
+        task = _db.task_next_claude()
+        if task and not _db.task_deep_running():
+            _run_claude(task)
+            continue
 
+        time.sleep(2)
+
+_worker_thread = None
 
 def _ensure_worker():
     global _worker_thread
@@ -530,5 +244,14 @@ def _ensure_worker():
         _worker_thread = threading.Thread(target=_worker_loop, daemon=True)
         _worker_thread.start()
 
-
 _ensure_worker()
+
+# ── Log bridge → app.py ───────────────────────────────────────────────────────
+
+def _log_api(tipo, action, detail=""):
+    try:
+        requests.post("http://localhost:5052/api/log/add",
+                      json={"type": tipo, "action": action, "detail": detail},
+                      timeout=2)
+    except Exception:
+        pass
