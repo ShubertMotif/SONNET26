@@ -227,10 +227,9 @@ def _worker_loop():
                 _run_deep(task)
                 continue
 
-        # Priorità 2: claude — parte appena il suo deep è done
-        # (può girare mentre un altro task ha deep running)
+        # Priorità 2: claude — parte appena il suo deep è done, in parallelo con Deep
         task = _db.task_next_claude()
-        if task and not _db.task_deep_running():
+        if task:
             _run_claude(task)
             continue
 
