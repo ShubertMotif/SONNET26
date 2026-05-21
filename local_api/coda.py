@@ -143,6 +143,11 @@ def session_list():
 def task_cancel(tid):
     _db.task_cancel(tid)
 
+def task_restart(tid):
+    """Rimette un task in coda (utile per riprocessare task error)."""
+    _db.task_reset_single(tid)
+    _ensure_worker()
+
 def session_cancel(sid):
     _db.task_cancel_session(sid)
 

@@ -310,87 +310,25 @@ def ds_toggle():
     log_append("system", "ds_toggle", f"DeepSonnet segue: {'ON' if _ds_on else 'OFF'}")
     return jsonify({"on": _ds_on})
 
-# ── Task unificato (gestisce DS follow server-side) ──────────
-@app.route("/api/task", methods=["POST"])
-def task_add():
-    global _ds_on
-    data    = request.json or {}
-    type_   = data.get("type", "shell")
-    payload = data.get("payload", "").strip()
-    label   = data.get("label", payload[:50])
-    if not payload:
-        return jsonify({"error": "payload mancante"}), 400
-
-    # "prompt" / "AI" → append se topic attivo, altrimenti nuovo dual
-    if type_ == "prompt":
-        if _current_topic:
-            section_claude = data.get("section_claude", "")
-            task = coda_module.add_topic_task(payload, label, _current_topic, section_claude)
-            log_append("system", "topic_task", f"◈ [{_current_topic['key']}] {payload[:60]}")
-        else:
-            task = coda_module.add_dual(
-                label=label, brief=payload, output_claude="",
-                file_claude="", write_claude=False,
-                autostart=True, worker_claude_init="pending",
-            )
-            log_append("claude", "dual_input", f"[AI→dual] {payload[:60]}")
-            log_append("deep",   label,        f"→ auto: {task['file_deep']}")
-        return jsonify({"task": task, "ds_task": None, "ds_on": _ds_on})
-
-    task = coda_module.add(type_, payload, label)
-    log_append("coda", "task_add", f"[{type_}] {payload[:60]}")
-
-    ds_task = None
-    if _ds_on and type_ != "note":
-        ds_prompt = {
-            "shell":  f"Dato questo comando shell, spiega cosa fa e l'output atteso:\n{payload}",
-            "python": f"Analizza questo codice Python e mostra il risultato:\n{payload}",
-        }.get(type_, payload)
-        ds_task = coda_module.add("prompt", ds_prompt, f"◈DS {label[:40]}")
-        log_append("coda", "ds_follow", f"◈DS accodato per: {payload[:60]}")
-
-    return jsonify({"task": task, "ds_task": ds_task, "ds_on": _ds_on})
 
 # ── CODA ─────────────────────────────────────────────────────
-@app.route("/api/coda/add", methods=["POST"])
-def coda_add():
-    data = request.json or {}
-    task = coda_module.add(data.get("type","shell"), data.get("payload","").strip(), data.get("label",""))
-    return jsonify(task)
-
-@app.route("/api/coda/add_dual", methods=["POST"])
-def coda_add_dual():
-    data = request.json or {}
-    brief  = data.get("brief","").strip()
-    fc     = data.get("file_claude","").strip()
-    if not brief or not fc:
-        return jsonify({"error": "brief e file_claude obbligatori"}), 400
-    label = data.get("label","")[:50]
-    write_claude = data.get("write_claude", True)
-    autostart    = data.get("autostart", False)   # default standby per code manuali
-    task = coda_module.add_dual(label, brief, data.get("output_claude",""), fc,
-                                write_claude=write_claude, autostart=autostart)
-    log_append("claude", label or fc, f"✓ {task['file_claude']}")
-    log_append("deep",   label or fc, f"→ coda: {task['file_deep']} ({'auto' if autostart else 'standby'})")
-    return jsonify(task)
-
 @app.route("/api/coda/list")
 def coda_list():
-    return jsonify(coda_module.list_tasks(request.args.get("status")))
+    return jsonify(coda_module.task_list(status=request.args.get("status")))
 
 @app.route("/api/coda/get/<task_id>")
 def coda_get(task_id):
-    t = coda_module.get(task_id)
+    t = coda_module.task_get(task_id)
     return jsonify(t) if t else (jsonify({"error": "non trovato"}), 404)
 
 @app.route("/api/coda/cancel/<task_id>", methods=["POST"])
 def coda_cancel(task_id):
-    coda_module.cancel(task_id)
+    coda_module.task_cancel(task_id)
     return jsonify({"ok": True})
 
 @app.route("/api/coda/start/<task_id>", methods=["POST"])
 def coda_start(task_id):
-    coda_module.start_task(task_id)
+    coda_module.task_restart(task_id)
     return jsonify({"ok": True})
 
 @app.route("/api/coda/clear", methods=["POST"])

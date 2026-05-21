@@ -235,6 +235,16 @@ def task_cancel_session(sid):
                          worker_deep='cancelled', worker_claude='cancelled'
                          WHERE session_id=? AND status IN ('pending','running')""", (sid,))
 
+def task_reset_single(tid):
+    """Rimette un singolo task in coda (reset completo a pending)."""
+    with _lock:
+        with _conn() as c:
+            c.execute("""UPDATE tasks SET status='pending',
+                         worker_deep='pending', worker_claude='pending',
+                         started='', started_deep='', started_claude='',
+                         finished='', finished_deep='', finished_claude='',
+                         output_deep='', output_claude='' WHERE id=?""", (tid,))
+
 def task_reset_running():
     """All'avvio del worker: resetta running orfani → pending (da restart API)."""
     with _lock:
