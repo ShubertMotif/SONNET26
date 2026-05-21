@@ -240,20 +240,25 @@ def _run_claude(task):
 
 # ── Worker loop ───────────────────────────────────────────────────────────────
 
+_deep_thread   = None
+_claude_thread = None
+
 def _worker_loop():
+    global _deep_thread, _claude_thread
     while True:
-        # Priorità 1: deep (RTX) — uno alla volta
-        if not _db.task_deep_running():
+        # Deep: un task alla volta, thread separato
+        if (_deep_thread is None or not _deep_thread.is_alive()) and not _db.task_deep_running():
             task = _db.task_next_deep()
             if task:
-                _run_deep(task)
-                continue
+                _deep_thread = threading.Thread(target=_run_deep, args=(task,), daemon=True)
+                _deep_thread.start()
 
-        # Priorità 2: claude — parte appena il suo deep è done, in parallelo con Deep
-        task = _db.task_next_claude()
-        if task:
-            _run_claude(task)
-            continue
+        # Claude: thread separato, parte appena deep del suo task è done/error
+        if _claude_thread is None or not _claude_thread.is_alive():
+            task = _db.task_next_claude()
+            if task:
+                _claude_thread = threading.Thread(target=_run_claude, args=(task,), daemon=True)
+                _claude_thread.start()
 
         time.sleep(2)
 
